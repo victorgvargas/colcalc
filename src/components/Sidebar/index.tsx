@@ -7,9 +7,25 @@ const StyledSidebar = styled.div`
     background-color: #f4f4f4;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     border: 1px solid #ddd;
     border-radius: 5px;
+    padding: 0 10px;
+`;
+
+const SidebarHeader = styled.div`
+  display: flex;
+  align-items: center;
+
+`;
+
+const Logo = styled.img`
+  height: 32px;
+  width: 32px;
+`;
+
+const HeaderTitle = styled.h1`
+  margin-inline-start: 10px;
+  color: #444;
 `;
 
 const SidebarSection = styled.div`
@@ -20,11 +36,12 @@ const SidebarSection = styled.div`
 
 const SectionTitle = styled.h2`
   text-style: bold;
+  color: #444;
 `;
 
 const SectionItem = styled(NavLink)`
   text-decoration: none;
-  color: #333;
+  color: #555;
   &:hover {
     text-decoration: underline;
   }
@@ -37,7 +54,10 @@ type SidebarProps = {
 const Sidebar = ({ sections }: SidebarProps) => {
   return (
     <StyledSidebar>
-        <img src="/logo.svg" alt="ColCalc Logo" />
+        <SidebarHeader>
+            <Logo src="/logo.svg" alt="ColCalc Logo" />
+            <HeaderTitle>ColCalc</HeaderTitle>
+        </SidebarHeader>
         {sections.map((section) => (
           <SidebarSection key={section.title}>
             {section.title !== "none" && <SectionTitle>{section.title}</SectionTitle>}

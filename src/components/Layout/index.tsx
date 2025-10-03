@@ -4,11 +4,10 @@ import { Outlet } from "react-router-dom";
 
 const Container = styled.div`
     display: flex;
-    height: 100vh;
-    width: 100vw;
-    padding: 10px;
+    height: calc(100vh - 20px);
+    width: calc(100vw - 20px);
+    margin: 10px 5px;
     box-sizing: border-box;
-    background-color: #f9f9f9;
 `;
 
 const Layout = () => {
