@@ -1,5 +1,7 @@
 import { NavLink } from 'react-router';
 import styled from 'styled-components';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 
 const StyledSidebar = styled.div`
     width: 250px;
@@ -10,6 +12,7 @@ const StyledSidebar = styled.div`
     border: 1px solid #ddd;
     border-radius: 5px;
     padding: 0 10px;
+    gap: 6px;
 `;
 
 const SidebarHeader = styled.div`
@@ -23,7 +26,7 @@ const Logo = styled.img`
   width: 32px;
 `;
 
-const HeaderTitle = styled.h1`
+const HeaderTitle = styled.h2`
   margin-inline-start: 10px;
   color: #444;
 `;
@@ -31,24 +34,23 @@ const HeaderTitle = styled.h1`
 const SidebarSection = styled.div`
   display:flex;
   flex-direction: column;
-  gap: 6px;
 `;
 
-const SectionTitle = styled.h2`
+const SectionTitle = styled.h4`
   text-style: bold;
-  color: #444;
+  color: #777;
 `;
 
 const SectionItem = styled(NavLink)`
   text-decoration: none;
-  color: #555;
+  color: #444;
   &:hover {
     text-decoration: underline;
   }
 `;
 
 type SidebarProps = {
-    sections: { title: string; items: { href: string; alt: string }[] }[];
+    sections: { title: string; items: { href: string; alt: string, icon: IconProp }[] }[];
 };
 
 const Sidebar = ({ sections }: SidebarProps) => {
@@ -62,7 +64,7 @@ const Sidebar = ({ sections }: SidebarProps) => {
           <SidebarSection key={section.title}>
             {section.title !== "none" && <SectionTitle>{section.title}</SectionTitle>}
             {section.items.map((item) => (
-              <SectionItem key={item.href} to={item.href}>{item.alt}</SectionItem>
+              <SectionItem key={item.href} to={item.href}>{<FontAwesomeIcon icon={item.icon}/>} {item.alt}</SectionItem>
             ))}
           </SidebarSection>
         ))}
