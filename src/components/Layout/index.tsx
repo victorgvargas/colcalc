@@ -34,6 +34,12 @@ const Layout = () => {
             items: [
                 { href: "/cities-comparison", alt: "Cities comparison" },
             ]
+        },
+        {
+            title: "none",
+            items: [
+                { href: "/tax-calculator", alt: "Tax calculator" },
+            ]
         }
     ];
 

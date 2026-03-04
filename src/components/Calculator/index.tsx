@@ -324,6 +324,12 @@ const CURRENCIES = {
 
 type CurrencyCode = keyof typeof CURRENCIES;
 
+const DISPLAY_CURRENCY: CurrencyCode = 'USD';
+
+function toDisplayCurrency(value: number, fromCurrency: CurrencyCode): number {
+  return value * CURRENCIES[fromCurrency].rateToUsd;
+}
+
 const Calculator: React.FC = () => {
   const [income, setIncome] = useState<string>('');
   const [incomeCurrency, setIncomeCurrency] = useState<CurrencyCode>('USD');
@@ -475,9 +481,14 @@ const Calculator: React.FC = () => {
     return chartData;
   }, [selectedRecord, chartData]);
 
-  const pieChartCurrency = selectedRecord
-    ? CURRENCIES[selectedRecord.currency]
-    : CURRENCIES[incomeCurrency];
+  const pieChartDataInDisplayCurrency = useMemo(
+    () =>
+      pieChartData.map(({ name, value }) => ({
+        name,
+        value: toDisplayCurrency(value, selectedRecord ? selectedRecord.currency : incomeCurrency),
+      })),
+    [pieChartData, selectedRecord, incomeCurrency],
+  );
 
   const filteredAndSortedRecords = useMemo(() => {
     const search = citySearch.trim().toLowerCase();
@@ -488,8 +499,14 @@ const Calculator: React.FC = () => {
     }
 
     const sorted = [...data].sort((a, b) => {
-      const aVal = a[sortKey];
-      const bVal = b[sortKey];
+      const aVal =
+        sortKey === 'city'
+          ? a[sortKey]
+          : toDisplayCurrency(a[sortKey] as number, a.currency);
+      const bVal =
+        sortKey === 'city'
+          ? b[sortKey]
+          : toDisplayCurrency(b[sortKey] as number, b.currency);
 
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         const cmp = aVal.localeCompare(bVal);
@@ -700,6 +717,9 @@ const Calculator: React.FC = () => {
       <Typography variant="h4" gutterBottom>
         Cost of Living Calculator
       </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: -1, mb: 1 }}>
+        Results are shown in local currency.
+      </Typography>
 
       <Card>
         <CardContent>
@@ -834,13 +854,13 @@ const Calculator: React.FC = () => {
               </Box>
               <Box textAlign={{ xs: 'left', sm: 'right' }}>
                 <Typography variant="subtitle1">
-                  Total costs: {totalCostsInCurrency.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
+                  Total costs: {toDisplayCurrency(totalCostsInCurrency, incomeCurrency).toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
                 </Typography>
                 <Typography
                   variant="subtitle1"
                   color={netBudget >= 0 ? 'success.main' : 'error.main'}
                 >
-                  Net budget: {netBudget.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
+                  Net budget: {toDisplayCurrency(netBudget, incomeCurrency).toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
                 </Typography>
               </Box>
             </Box>
@@ -871,12 +891,12 @@ const Calculator: React.FC = () => {
                   </Typography>
                 )}
               </Typography>
-              {pieChartData.length ? (
+              {pieChartDataInDisplayCurrency.length ? (
                 <Box sx={{ height: '85%', minHeight: 0, overflow: 'hidden' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
                       <Pie
-                        data={pieChartData}
+                        data={pieChartDataInDisplayCurrency}
                         dataKey="value"
                         nameKey="name"
                         cx="50%"
@@ -884,7 +904,7 @@ const Calculator: React.FC = () => {
                         outerRadius="75%"
                         isAnimationActive
                       >
-                        {pieChartData.map((_, index) => (
+                        {pieChartDataInDisplayCurrency.map((_, index) => (
                           <Cell
                             // eslint-disable-next-line react/no-array-index-key
                             key={`cell-${index}`}
@@ -894,7 +914,7 @@ const Calculator: React.FC = () => {
                       </Pie>
                       <Tooltip
                         formatter={(value: number, name: string) => [
-                          `${Number(value).toFixed(2)} ${pieChartCurrency.symbol}`,
+                          `${Number(value).toFixed(2)} ${CURRENCIES[DISPLAY_CURRENCY].symbol}`,
                           name,
                         ]}
                         contentStyle={{ maxWidth: '100%' }}
@@ -963,7 +983,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'income' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('income')}
                     >
-                      Income
+                      Income (USD)
                     </TableSortLabel>
                   </TableCell>
                   <TableCell
@@ -975,7 +995,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'totalCosts' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('totalCosts')}
                     >
-                      Total costs
+                      Total costs (USD)
                     </TableSortLabel>
                   </TableCell>
                   <TableCell
@@ -987,7 +1007,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'netBudget' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('netBudget')}
                     >
-                      Net budget
+                      Net budget (USD)
                     </TableSortLabel>
                   </TableCell>
                   <TableCell align="center" sx={{ width: 100 }}>
@@ -1007,10 +1027,10 @@ const Calculator: React.FC = () => {
                     <TableCell>{record.city}</TableCell>
                     <TableCell>{record.country}</TableCell>
                     <TableCell align="right">
-                      {record.income.toFixed(2)} {CURRENCIES[record.currency].symbol}
+                      {toDisplayCurrency(record.income, record.currency).toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
                     </TableCell>
                     <TableCell align="right">
-                      {record.totalCosts.toFixed(2)} {CURRENCIES[record.currency].symbol}
+                      {toDisplayCurrency(record.totalCosts, record.currency).toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
                     </TableCell>
                     <TableCell
                       align="right"
@@ -1019,7 +1039,7 @@ const Calculator: React.FC = () => {
                           record.netBudget >= 0 ? 'success.main' : 'error.main',
                       }}
                     >
-                      {record.netBudget.toFixed(2)} {CURRENCIES[record.currency].symbol}
+                      {toDisplayCurrency(record.netBudget, record.currency).toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
                     </TableCell>
                     <TableCell align="center" sx={{ width: 100 }} onClick={(e) => e.stopPropagation()}>
                       <IconButton
