@@ -4,7 +4,11 @@ import {
   Button,
   Card,
   CardContent,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -28,11 +32,17 @@ type ApiPriceItem = {
   category_name?: string;
   item_name?: string;
   avg_price?: number;
+  average_price?: number;
   [key: string]: unknown;
 };
 
 type ApiPricesResponse = {
+  city_id?: number;
+  city_name?: string;
+  country_name?: string;
+  exchange_rate?: Record<string, number>;
   prices?: ApiPriceItem[];
+  error?: string | null;
   [key: string]: unknown;
 };
 
@@ -43,6 +53,7 @@ type CalculationRecord = {
   income: number;
   totalCosts: number;
   netBudget: number;
+  currency: keyof typeof CURRENCIES;
 };
 
 type SortKey = 'city' | 'income' | 'totalCosts' | 'netBudget';
@@ -50,8 +61,27 @@ type SortDirection = 'asc' | 'desc';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AA46BE', '#FF6F91'];
 
+function getPriceFromItem(p: ApiPriceItem): number {
+  if (typeof p.avg_price === 'number') return p.avg_price;
+  if (typeof p.average_price === 'number') return p.average_price;
+  return 0;
+}
+
+const CURRENCIES = {
+  USD: { name: 'US Dollar', symbol: 'USD', rateToUsd: 1 },
+  EUR: { name: 'Euro', symbol: 'EUR', rateToUsd: 1.08 },
+  GBP: { name: 'British Pound', symbol: 'GBP', rateToUsd: 1.27 },
+  JPY: { name: 'Japanese Yen', symbol: 'JPY', rateToUsd: 0.0067 },
+  CHF: { name: 'Swiss Franc', symbol: 'CHF', rateToUsd: 1.12 },
+  CAD: { name: 'Canadian Dollar', symbol: 'CAD', rateToUsd: 0.74 },
+  AUD: { name: 'Australian Dollar', symbol: 'AUD', rateToUsd: 0.65 },
+} as const;
+
+type CurrencyCode = keyof typeof CURRENCIES;
+
 const Calculator: React.FC = () => {
   const [income, setIncome] = useState<string>('');
+  const [incomeCurrency, setIncomeCurrency] = useState<CurrencyCode>('USD');
   const [city, setCity] = useState<string>('');
   const [country, setCountry] = useState<string>('');
 
@@ -59,6 +89,7 @@ const Calculator: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [prices, setPrices] = useState<ApiPriceItem[]>([]);
+  const [apiExchangeRates, setApiExchangeRates] = useState<Record<string, number> | null>(null);
   const [records, setRecords] = useState<CalculationRecord[]>([]);
 
   const [sortKey, setSortKey] = useState<SortKey>('city');
@@ -67,15 +98,20 @@ const Calculator: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [citySearch, setCitySearch] = useState('');
 
-  const totalCosts = useMemo(
-    () => prices.reduce((sum, p) => sum + (typeof p.avg_price === 'number' ? p.avg_price : 0), 0),
+  const totalCostsUsd = useMemo(
+    () => prices.reduce((sum, p) => sum + getPriceFromItem(p), 0),
     [prices],
   );
 
+  const effectiveRateFromUsd =
+    apiExchangeRates && incomeCurrency in apiExchangeRates && Number(apiExchangeRates[incomeCurrency]) > 0
+      ? Number(apiExchangeRates[incomeCurrency])
+      : CURRENCIES[incomeCurrency].rateToUsd;
+  const totalCostsInCurrency = totalCostsUsd / effectiveRateFromUsd;
   const netBudget = useMemo(() => {
     const numericIncome = Number(income) || 0;
-    return numericIncome - totalCosts;
-  }, [income, totalCosts]);
+    return numericIncome - totalCostsInCurrency;
+  }, [income, totalCostsInCurrency]);
 
   const chartData = useMemo(() => {
     if (!prices.length) return [];
@@ -83,16 +119,17 @@ const Calculator: React.FC = () => {
     const byCategory = new Map<string, number>();
     prices.forEach((p) => {
       const category = (p.category_name || 'Other') as string;
-      const value = typeof p.avg_price === 'number' ? p.avg_price : 0;
-      if (!value) return;
-      byCategory.set(category, (byCategory.get(category) || 0) + value);
+      const valueUsd = getPriceFromItem(p);
+      if (!valueUsd) return;
+      const valueInCurrency = valueUsd / effectiveRateFromUsd;
+      byCategory.set(category, (byCategory.get(category) || 0) + valueInCurrency);
     });
 
     return Array.from(byCategory.entries()).map(([name, value]) => ({
       name,
       value,
     }));
-  }, [prices]);
+  }, [prices, effectiveRateFromUsd]);
 
   const filteredAndSortedRecords = useMemo(() => {
     const search = citySearch.trim().toLowerCase();
@@ -176,22 +213,32 @@ const Calculator: React.FC = () => {
       }
 
       const data = (await response.json()) as ApiPricesResponse;
+      if (data.error) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'API returned an error.');
+      }
       const fetchedPrices = Array.isArray(data.prices) ? data.prices : [];
+
+      if (data.exchange_rate && typeof data.exchange_rate === 'object') {
+        setApiExchangeRates(data.exchange_rate);
+      }
 
       setPrices(fetchedPrices);
 
-      const computedTotalCosts = fetchedPrices.reduce(
-        (sum, p) => sum + (typeof p.avg_price === 'number' ? p.avg_price : 0),
-        0,
-      );
+      const computedTotalCostsUsd = fetchedPrices.reduce((sum, p) => sum + getPriceFromItem(p), 0);
+      const recordRate =
+        data.exchange_rate && incomeCurrency in data.exchange_rate && Number((data.exchange_rate as Record<string, number>)[incomeCurrency]) > 0
+          ? Number((data.exchange_rate as Record<string, number>)[incomeCurrency])
+          : CURRENCIES[incomeCurrency].rateToUsd;
+      const totalCostsInRecordCurrency = computedTotalCostsUsd / recordRate;
 
       const record: CalculationRecord = {
         id: Date.now(),
         city: city.trim(),
         country: country.trim(),
         income: numericIncome,
-        totalCosts: computedTotalCosts,
-        netBudget: numericIncome - computedTotalCosts,
+        totalCosts: totalCostsInRecordCurrency,
+        netBudget: numericIncome - totalCostsInRecordCurrency,
+        currency: incomeCurrency,
       };
 
       setRecords((prev) => [record, ...prev]);
@@ -207,9 +254,11 @@ const Calculator: React.FC = () => {
 
   const handleReset = () => {
     setIncome('');
+    setIncomeCurrency('USD');
     setCity('');
     setCountry('');
     setPrices([]);
+    setApiExchangeRates(null);
     setError(null);
   };
 
@@ -238,12 +287,12 @@ const Calculator: React.FC = () => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, minmax(0, 1fr))' },
                 gap: 2,
               }}
             >
               <TextField
-                label="Monthly Income (USD)"
+                label="Monthly Income"
                 type="number"
                 fullWidth
                 required
@@ -251,6 +300,21 @@ const Calculator: React.FC = () => {
                 onChange={(e) => setIncome(e.target.value)}
                 inputProps={{ min: 0, step: 100 }}
               />
+              <FormControl fullWidth required>
+                <InputLabel id="income-currency-label">Currency</InputLabel>
+                <Select
+                  labelId="income-currency-label"
+                  value={incomeCurrency}
+                  label="Currency"
+                  onChange={(e) => setIncomeCurrency(e.target.value as CurrencyCode)}
+                >
+                  {(Object.keys(CURRENCIES) as CurrencyCode[]).map((code) => (
+                    <MenuItem key={code} value={code}>
+                      {CURRENCIES[code].symbol} – {CURRENCIES[code].name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <TextField
                 label="City"
                 fullWidth
@@ -295,13 +359,13 @@ const Calculator: React.FC = () => {
               </Box>
               <Box textAlign={{ xs: 'left', sm: 'right' }}>
                 <Typography variant="subtitle1">
-                  Total costs: {totalCosts.toFixed(2)} USD
+                  Total costs: {totalCostsInCurrency.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
                 </Typography>
                 <Typography
                   variant="subtitle1"
                   color={netBudget >= 0 ? 'success.main' : 'error.main'}
                 >
-                  Net budget: {netBudget.toFixed(2)} USD
+                  Net budget: {netBudget.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
                 </Typography>
               </Box>
             </Box>
@@ -348,7 +412,9 @@ const Calculator: React.FC = () => {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: number) => `${value.toFixed(2)} USD`}
+                      formatter={(value: number) =>
+                        `${value.toFixed(2)} ${CURRENCIES[incomeCurrency].symbol}`
+                      }
                     />
                     <Legend />
                   </PieChart>
@@ -405,7 +471,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'income' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('income')}
                     >
-                      Income (USD)
+                      Income
                     </TableSortLabel>
                   </TableCell>
                   <TableCell
@@ -417,7 +483,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'totalCosts' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('totalCosts')}
                     >
-                      Total costs (USD)
+                      Total costs
                     </TableSortLabel>
                   </TableCell>
                   <TableCell
@@ -429,7 +495,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'netBudget' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('netBudget')}
                     >
-                      Net budget (USD)
+                      Net budget
                     </TableSortLabel>
                   </TableCell>
                 </TableRow>
@@ -440,10 +506,10 @@ const Calculator: React.FC = () => {
                     <TableCell>{record.city}</TableCell>
                     <TableCell>{record.country}</TableCell>
                     <TableCell align="right">
-                      {record.income.toFixed(2)}
+                      {record.income.toFixed(2)} {CURRENCIES[record.currency].symbol}
                     </TableCell>
                     <TableCell align="right">
-                      {record.totalCosts.toFixed(2)}
+                      {record.totalCosts.toFixed(2)} {CURRENCIES[record.currency].symbol}
                     </TableCell>
                     <TableCell
                       align="right"
@@ -452,7 +518,7 @@ const Calculator: React.FC = () => {
                           record.netBudget >= 0 ? 'success.main' : 'error.main',
                       }}
                     >
-                      {record.netBudget.toFixed(2)}
+                      {record.netBudget.toFixed(2)} {CURRENCIES[record.currency].symbol}
                     </TableCell>
                   </TableRow>
                 ))}
