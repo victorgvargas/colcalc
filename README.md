@@ -71,3 +71,13 @@ export default defineConfig([
   },
 ])
 ```
+
+## Deploying to Fly.io
+
+The app is set up for deployment on [Fly.io](https://fly.io).
+
+1. Install the [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/) and sign in: `fly auth login`.
+2. From the project root, create the app (first time only): `fly launch` — accept the Dockerfile and `fly.toml`, choose app name and region.
+3. Deploy: `fly deploy`.
+
+Subsequent deploys: run `fly deploy` from the project root. The app will be available at `https://<your-app-name>.fly.dev`.
