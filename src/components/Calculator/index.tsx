@@ -1,14 +1,21 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
+  IconButton,
   InputLabel,
   MenuItem,
   Paper,
   Select,
+  SvgIcon,
   Table,
   TableBody,
   TableCell,
@@ -30,11 +37,31 @@ import {
 
 type ApiPriceItem = {
   category_name?: string;
+  category?: string;
   item_name?: string;
+  item?: string;
+  avg?: number;
   avg_price?: number;
   average_price?: number;
+  min?: number;
+  max?: number;
+  price?: number;
+  value?: number;
+  usd_price?: number;
   [key: string]: unknown;
 };
+
+const PRICE_KEYS = [
+  'avg',
+  'avg_price',
+  'average_price',
+  'price',
+  'value',
+  'usd_price',
+  'amount',
+  'min',
+  'max',
+] as const;
 
 type ApiPricesResponse = {
   city_id?: number;
@@ -46,26 +73,237 @@ type ApiPricesResponse = {
   [key: string]: unknown;
 };
 
+type CityOption = {
+  cityName: string;
+  countryName: string;
+  cityId?: number;
+};
+
 type CalculationRecord = {
   id: number;
   city: string;
   country: string;
   income: number;
+  numberOfKids: number;
   totalCosts: number;
   netBudget: number;
   currency: keyof typeof CURRENCIES;
+  /** For recalculating when editing numberOfKids */
+  baseCostsInRecordCurrency?: number;
+  childcarePerChildInRecordCurrency?: number;
 };
+
+const RECORDS_STORAGE_KEY = 'colcalc_records';
+
+function parseStoredRecords(raw: string | null): CalculationRecord[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((r) => {
+      const rec = r as Record<string, unknown>;
+      const id = typeof rec.id === 'number' ? rec.id : Date.now() + Math.random();
+      const numberOfKids = typeof rec.numberOfKids === 'number' ? rec.numberOfKids : 0;
+      return {
+        id,
+        city: typeof rec.city === 'string' ? rec.city : '',
+        country: typeof rec.country === 'string' ? rec.country : '',
+        income: typeof rec.income === 'number' ? rec.income : 0,
+        numberOfKids,
+        totalCosts: typeof rec.totalCosts === 'number' ? rec.totalCosts : 0,
+        netBudget: typeof rec.netBudget === 'number' ? rec.netBudget : 0,
+        currency: (typeof rec.currency === 'string' && rec.currency in CURRENCIES ? rec.currency : 'USD') as keyof typeof CURRENCIES,
+        baseCostsInRecordCurrency: typeof rec.baseCostsInRecordCurrency === 'number' ? rec.baseCostsInRecordCurrency : undefined,
+        childcarePerChildInRecordCurrency: typeof rec.childcarePerChildInRecordCurrency === 'number' ? rec.childcarePerChildInRecordCurrency : undefined,
+      };
+    }).filter((r) => r.city && r.country);
+  } catch {
+    return [];
+  }
+}
 
 type SortKey = 'city' | 'income' | 'totalCosts' | 'netBudget';
 type SortDirection = 'asc' | 'desc';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AA46BE', '#FF6F91'];
 
+function EditIconSvg() {
+  return (
+    <SvgIcon fontSize="small" sx={{ verticalAlign: 'middle' }}>
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.995.995 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+    </SvgIcon>
+  );
+}
+
+function DeleteIconSvg() {
+  return (
+    <SvgIcon fontSize="small" sx={{ verticalAlign: 'middle' }}>
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+    </SvgIcon>
+  );
+}
+
 function getPriceFromItem(p: ApiPriceItem): number {
-  if (typeof p.avg_price === 'number') return p.avg_price;
-  if (typeof p.average_price === 'number') return p.average_price;
+  for (const key of PRICE_KEYS) {
+    const v = p[key];
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+    if (typeof v === 'string') {
+      const n = parseFloat(v);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+  }
   return 0;
 }
+
+function getCategoryFromItem(p: ApiPriceItem): string {
+  const name = (p.category_name ?? p.category ?? p.item_name ?? p.item ?? 'Other') as string;
+  return name || 'Other';
+}
+
+/** Categories that represent monthly recurring expenses (include in total). */
+const MONTHLY_CATEGORY_PATTERNS = [
+  'rent',
+  'utilities',
+  'transport',
+  'internet',
+  'mobile',
+  'phone',
+  'childcare',
+] as const;
+
+/** Categories/items to exclude (one-time, per-unit, or not monthly). */
+const EXCLUDE_PATTERNS = [
+  'buy apartment',
+  'price per square',
+  'price per sq',
+  'markets',
+  'restaurants',
+  'clothing',
+  'sports',
+  'cinema',
+  'one-time',
+  'purchase',
+] as const;
+
+function isMonthlyRecurringCategory(p: ApiPriceItem): boolean {
+  const cat = ((p.category_name ?? p.category ?? '') as string).toLowerCase();
+  const item = ((p.item_name ?? p.item ?? '') as string).toLowerCase();
+  const combined = `${cat} ${item}`;
+  for (const ex of EXCLUDE_PATTERNS) {
+    if (combined.includes(ex)) return false;
+  }
+  for (const pattern of MONTHLY_CATEGORY_PATTERNS) {
+    if (cat.includes(pattern) || item.includes(pattern)) return true;
+  }
+  if (/rent|1 bedroom|3 bedroom|apartment.*(monthly|rent)/i.test(combined)) return true;
+  return false;
+}
+
+/** Per-unit / one-off item patterns: exclude these from Transport/Childcare. */
+const PER_UNIT_OR_ONE_OFF = [
+  'per liter',
+  'per km',
+  'per mile',
+  'one-way',
+  'one way',
+  '1 liter',
+  '1 km',
+  'gasoline',
+  'gas ',
+  'tire',
+  'taxi ',
+  'single ticket',
+];
+
+/** Plausible monthly range in USD: exclude car prices, annual fees, per-trip. */
+const TRANSPORT_MONTHLY_CAP_USD = 600;
+const CHILDCARE_MONTHLY_CAP_USD = 4000;
+
+function looksLikeMonthlyItem(p: ApiPriceItem): boolean {
+  const item = ((p.item_name ?? p.item ?? '') as string).toLowerCase();
+  const cat = ((p.category_name ?? p.category ?? '') as string).toLowerCase();
+  const combined = `${cat} ${item}`;
+  for (const ex of PER_UNIT_OR_ONE_OFF) {
+    if (combined.includes(ex)) return false;
+  }
+  return true;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+    : sorted[mid]!;
+}
+
+/**
+ * Compute monthly cost from prices: only include recurring categories.
+ * Rent: average of rent items. Transport/Childcare: median of items in plausible monthly range (avoids car price, annual, per-trip).
+ * Utilities, Internet, Mobile: sum.
+ */
+function computeMonthlyCostsFromPrices(
+  priceItems: ApiPriceItem[],
+): { totalUsd: number; byCategory: Map<string, number> } {
+  const sumByCategory = new Map<string, number>();
+  const listByCategory = new Map<string, number[]>();
+
+  for (const p of priceItems) {
+    const category = getCategoryFromItem(p);
+    const value = getPriceFromItem(p);
+    if (!value || !Number.isFinite(value)) continue;
+
+    const catLower = category.toLowerCase();
+    const isRent =
+      catLower.includes('rent') ||
+      /apartment|1 bedroom|3 bedroom|1 bed|3 bed/i.test(catLower);
+    const isTransport = catLower.includes('transport');
+    const isChildcare = catLower.includes('childcare');
+
+    if (!isMonthlyRecurringCategory(p)) continue;
+
+    if (isRent) {
+      const list = listByCategory.get('Rent') ?? [];
+      list.push(value);
+      listByCategory.set('Rent', list);
+    } else if (isTransport) {
+      if (!looksLikeMonthlyItem(p)) continue;
+      if (value > TRANSPORT_MONTHLY_CAP_USD) continue;
+      const list = listByCategory.get('Transportation') ?? [];
+      list.push(value);
+      listByCategory.set('Transportation', list);
+    } else if (isChildcare) {
+      if (!looksLikeMonthlyItem(p)) continue;
+      if (value > CHILDCARE_MONTHLY_CAP_USD) continue;
+      const list = listByCategory.get('Childcare') ?? [];
+      list.push(value);
+      listByCategory.set('Childcare', list);
+    } else {
+      sumByCategory.set(category, (sumByCategory.get(category) ?? 0) + value);
+    }
+  }
+
+  const byCategory = new Map<string, number>(sumByCategory);
+  for (const [cat, list] of listByCategory) {
+    if (list.length > 0) {
+      const val =
+        cat === 'Rent'
+          ? list.reduce((a, b) => a + b, 0) / list.length
+          : median(list);
+      byCategory.set(cat, (byCategory.get(cat) ?? 0) + val);
+    }
+  }
+
+  const totalUsd = Array.from(byCategory.values()).reduce((a, b) => a + b, 0);
+  return { totalUsd, byCategory };
+}
+
+const API_BASE = 'https://cost-of-living-and-prices.p.rapidapi.com';
+const API_HEADERS = {
+  'x-rapidapi-key': 'bf8010588dmsh35bf3ec00a6a414p1d2bb4jsn76cf746787c2',
+  'x-rapidapi-host': 'cost-of-living-and-prices.p.rapidapi.com',
+};
 
 const CURRENCIES = {
   USD: { name: 'US Dollar', symbol: 'USD', rateToUsd: 1 },
@@ -84,24 +322,89 @@ const Calculator: React.FC = () => {
   const [incomeCurrency, setIncomeCurrency] = useState<CurrencyCode>('USD');
   const [city, setCity] = useState<string>('');
   const [country, setCountry] = useState<string>('');
+  const [numberOfKids, setNumberOfKids] = useState<number>(0);
+
+  const [allCities, setAllCities] = useState<CityOption[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(true);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [prices, setPrices] = useState<ApiPriceItem[]>([]);
   const [apiExchangeRates, setApiExchangeRates] = useState<Record<string, number> | null>(null);
-  const [records, setRecords] = useState<CalculationRecord[]>([]);
+    const [records, setRecords] = useState<CalculationRecord[]>(() =>
+    typeof localStorage !== 'undefined'
+      ? parseStoredRecords(localStorage.getItem(RECORDS_STORAGE_KEY))
+      : [],
+  );
+
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined' && records.length >= 0) {
+      localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify(records));
+    }
+  }, [records]);
 
   const [sortKey, setSortKey] = useState<SortKey>('city');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [citySearch, setCitySearch] = useState('');
+  const [editModalRecord, setEditModalRecord] = useState<CalculationRecord | null>(null);
+  const [editIncome, setEditIncome] = useState('');
+  const [editNumberOfKids, setEditNumberOfKids] = useState(0);
 
-  const totalCostsUsd = useMemo(
-    () => prices.reduce((sum, p) => sum + getPriceFromItem(p), 0),
+  useEffect(() => {
+    let cancelled = false;
+    setCitiesLoading(true);
+    fetch(`${API_BASE}/cities`, { method: 'GET', headers: API_HEADERS })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Cities fetch failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data: unknown) => {
+        if (cancelled) return;
+        const options: CityOption[] = [];
+        const raw = Array.isArray(data) ? data : (data && typeof data === 'object' && 'cities' in data ? (data as { cities: unknown }).cities : data);
+        const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+        for (const item of list) {
+          if (item && typeof item === 'object') {
+            const o = item as Record<string, unknown>;
+            const cityName = (o.city_name ?? o.cityName ?? o.name ?? o.city ?? '') as string;
+            const countryName = (o.country_name ?? o.countryName ?? o.country ?? '') as string;
+            if (cityName && countryName) {
+              options.push({
+                cityName: String(cityName).trim(),
+                countryName: String(countryName).trim(),
+                cityId: typeof o.city_id === 'number' ? o.city_id : undefined,
+              });
+            }
+          }
+        }
+        setAllCities(options);
+      })
+      .catch(() => {
+        if (!cancelled) setAllCities([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCitiesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const { totalUsd: rawTotalUsd, byCategory: rawByCategory } = useMemo(
+    () => computeMonthlyCostsFromPrices(prices),
     [prices],
   );
+
+  const { totalUsd: totalCostsUsd, byCategory: monthlyByCategory } = useMemo(() => {
+    const childcarePerChild = rawByCategory.get('Childcare') ?? 0;
+    const kids = Math.max(0, numberOfKids);
+    const childcareTotal = childcarePerChild * kids;
+    const adjustedTotal = rawTotalUsd - childcarePerChild + childcareTotal;
+    const adjustedByCategory = new Map(rawByCategory);
+    adjustedByCategory.set('Childcare', childcareTotal);
+    return { totalUsd: adjustedTotal, byCategory: adjustedByCategory };
+  }, [rawTotalUsd, rawByCategory, numberOfKids]);
 
   const effectiveRateFromUsd =
     apiExchangeRates && incomeCurrency in apiExchangeRates && Number(apiExchangeRates[incomeCurrency]) > 0
@@ -114,22 +417,12 @@ const Calculator: React.FC = () => {
   }, [income, totalCostsInCurrency]);
 
   const chartData = useMemo(() => {
-    if (!prices.length) return [];
-
-    const byCategory = new Map<string, number>();
-    prices.forEach((p) => {
-      const category = (p.category_name || 'Other') as string;
-      const valueUsd = getPriceFromItem(p);
-      if (!valueUsd) return;
-      const valueInCurrency = valueUsd / effectiveRateFromUsd;
-      byCategory.set(category, (byCategory.get(category) || 0) + valueInCurrency);
-    });
-
-    return Array.from(byCategory.entries()).map(([name, value]) => ({
+    if (!monthlyByCategory.size) return [];
+    return Array.from(monthlyByCategory.entries()).map(([name, valueUsd]) => ({
       name,
-      value,
+      value: valueUsd / effectiveRateFromUsd,
     }));
-  }, [prices, effectiveRateFromUsd]);
+  }, [monthlyByCategory, effectiveRateFromUsd]);
 
   const filteredAndSortedRecords = useMemo(() => {
     const search = citySearch.trim().toLowerCase();
@@ -196,16 +489,13 @@ const Calculator: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const url = new URL('https://cost-of-living-and-prices.p.rapidapi.com/prices');
+      const url = new URL(`${API_BASE}/prices`);
       url.searchParams.set('city_name', city.trim());
       url.searchParams.set('country_name', country.trim());
 
       const response = await fetch(url.toString(), {
         method: 'GET',
-        headers: {
-          'x-rapidapi-key': 'bf8010588dmsh35bf3ec00a6a414p1d2bb4jsn76cf746787c2',
-          'x-rapidapi-host': 'cost-of-living-and-prices.p.rapidapi.com',
-        },
+        headers: API_HEADERS,
       });
 
       if (!response.ok) {
@@ -216,7 +506,13 @@ const Calculator: React.FC = () => {
       if (data.error) {
         throw new Error(typeof data.error === 'string' ? data.error : 'API returned an error.');
       }
-      const fetchedPrices = Array.isArray(data.prices) ? data.prices : [];
+      let fetchedPrices: ApiPriceItem[] = [];
+      if (Array.isArray(data.prices)) {
+        fetchedPrices = data.prices;
+      } else if (data.prices && typeof data.prices === 'object' && !Array.isArray(data.prices)) {
+        const vals = Object.values(data.prices);
+        fetchedPrices = vals.flat().filter((x): x is ApiPriceItem => x != null && typeof x === 'object');
+      }
 
       if (data.exchange_rate && typeof data.exchange_rate === 'object') {
         setApiExchangeRates(data.exchange_rate);
@@ -224,21 +520,30 @@ const Calculator: React.FC = () => {
 
       setPrices(fetchedPrices);
 
-      const computedTotalCostsUsd = fetchedPrices.reduce((sum, p) => sum + getPriceFromItem(p), 0);
+      const { totalUsd: computedTotalCostsUsd, byCategory: computedByCategory } =
+        computeMonthlyCostsFromPrices(fetchedPrices);
+      const childcarePerChild = computedByCategory.get('Childcare') ?? 0;
+      const kids = Math.max(0, numberOfKids);
+      const adjustedTotalUsd = computedTotalCostsUsd - childcarePerChild + childcarePerChild * kids;
       const recordRate =
         data.exchange_rate && incomeCurrency in data.exchange_rate && Number((data.exchange_rate as Record<string, number>)[incomeCurrency]) > 0
           ? Number((data.exchange_rate as Record<string, number>)[incomeCurrency])
           : CURRENCIES[incomeCurrency].rateToUsd;
-      const totalCostsInRecordCurrency = computedTotalCostsUsd / recordRate;
+      const totalCostsInRecordCurrency = adjustedTotalUsd / recordRate;
+      const childcarePerChildInRecordCurrency = (childcarePerChild / recordRate);
+      const baseCostsInRecordCurrency = totalCostsInRecordCurrency - kids * childcarePerChildInRecordCurrency;
 
       const record: CalculationRecord = {
         id: Date.now(),
         city: city.trim(),
         country: country.trim(),
         income: numericIncome,
+        numberOfKids: kids,
         totalCosts: totalCostsInRecordCurrency,
         netBudget: numericIncome - totalCostsInRecordCurrency,
         currency: incomeCurrency,
+        baseCostsInRecordCurrency,
+        childcarePerChildInRecordCurrency,
       };
 
       setRecords((prev) => [record, ...prev]);
@@ -257,10 +562,53 @@ const Calculator: React.FC = () => {
     setIncomeCurrency('USD');
     setCity('');
     setCountry('');
+    setNumberOfKids(0);
     setPrices([]);
     setApiExchangeRates(null);
     setError(null);
   };
+
+  const handleDeleteRecord = useCallback((id: number) => {
+    setRecords((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
+  const handleEditClick = useCallback((record: CalculationRecord) => {
+    setEditModalRecord(record);
+    setEditIncome(String(record.income));
+    setEditNumberOfKids(record.numberOfKids ?? 0);
+  }, []);
+
+  const handleEditModalClose = useCallback(() => {
+    setEditModalRecord(null);
+  }, []);
+
+  const handleEditModalSave = useCallback(() => {
+    if (!editModalRecord) return;
+    const newIncome = Number(editIncome);
+    const newKids = Math.max(0, Math.floor(Number(editNumberOfKids)) || 0);
+    if (!Number.isFinite(newIncome) || newIncome < 0) return;
+
+    setRecords((prev) =>
+      prev.map((r) => {
+        if (r.id !== editModalRecord.id) return r;
+        const hasChildcareData =
+          typeof r.baseCostsInRecordCurrency === 'number' &&
+          typeof r.childcarePerChildInRecordCurrency === 'number';
+        const newTotalCosts = hasChildcareData
+          ? r.baseCostsInRecordCurrency! + newKids * r.childcarePerChildInRecordCurrency!
+          : r.totalCosts;
+        const newNetBudget = newIncome - newTotalCosts;
+        return {
+          ...r,
+          income: newIncome,
+          numberOfKids: newKids,
+          totalCosts: newTotalCosts,
+          netBudget: newNetBudget,
+        };
+      }),
+    );
+    setEditModalRecord(null);
+  }, [editModalRecord, editIncome, editNumberOfKids]);
 
   return (
     <Box
@@ -287,7 +635,7 @@ const Calculator: React.FC = () => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, minmax(0, 1fr))' },
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(5, minmax(0, 1fr))' },
                 gap: 2,
               }}
             >
@@ -315,12 +663,44 @@ const Calculator: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
-              <TextField
-                label="City"
+              <Autocomplete
+                freeSolo
                 fullWidth
-                required
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
+                loading={citiesLoading}
+                options={allCities}
+                getOptionLabel={(option) =>
+                  typeof option === 'string' ? option : option.cityName
+                }
+                value={
+                  city
+                    ? allCities.find(
+                        (c) =>
+                          c.cityName.toLowerCase() === city.trim().toLowerCase(),
+                      ) ?? city
+                    : null
+                }
+                inputValue={city}
+                onInputChange={(_, value) => setCity(value)}
+                onChange={(_, newValue) => {
+                  const option =
+                    typeof newValue === 'string' ? null : newValue;
+                  if (option) {
+                    setCity(option.cityName);
+                    setCountry(option.countryName);
+                  } else {
+                    setCity(typeof newValue === 'string' ? newValue : '');
+                  }
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="City"
+                    required
+                    placeholder={
+                      citiesLoading ? 'Loading cities…' : 'Type or select city'
+                    }
+                  />
+                )}
               />
               <TextField
                 label="Country"
@@ -328,6 +708,19 @@ const Calculator: React.FC = () => {
                 required
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
+                placeholder="Auto-filled when you select a city"
+              />
+              <TextField
+                label="Number of kids"
+                type="number"
+                fullWidth
+                value={numberOfKids}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  setNumberOfKids(Number.isNaN(n) || n < 0 ? 0 : n);
+                }}
+                inputProps={{ min: 0, step: 1 }}
+                helperText="Childcare cost × this number"
               />
             </Box>
             <Box
@@ -401,7 +794,15 @@ const Calculator: React.FC = () => {
                       cx="50%"
                       cy="50%"
                       outerRadius="75%"
-                      label
+                      label={({
+                        name,
+                        value,
+                      }: {
+                        name: string;
+                        value: number;
+                      }) =>
+                        `${name}: ${Number(value).toFixed(2)} ${CURRENCIES[incomeCurrency].symbol}`
+                      }
                     >
                       {chartData.map((_, index) => (
                         <Cell
@@ -498,6 +899,9 @@ const Calculator: React.FC = () => {
                       Net budget
                     </TableSortLabel>
                   </TableCell>
+                  <TableCell align="center" sx={{ width: 100 }}>
+                    Actions
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -520,11 +924,28 @@ const Calculator: React.FC = () => {
                     >
                       {record.netBudget.toFixed(2)} {CURRENCIES[record.currency].symbol}
                     </TableCell>
+                    <TableCell align="center" sx={{ width: 100 }}>
+                      <IconButton
+                        size="small"
+                        aria-label="Edit"
+                        onClick={() => handleEditClick(record)}
+                      >
+                        <EditIconSvg />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        aria-label="Delete"
+                        color="error"
+                        onClick={() => handleDeleteRecord(record.id)}
+                      >
+                        <DeleteIconSvg />
+                      </IconButton>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {!paginatedRecords.length && (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
+                    <TableCell colSpan={6} align="center">
                       <Typography variant="body2" color="text.secondary">
                         No records yet. Run a calculation to populate the table.
                       </Typography>
@@ -545,6 +966,39 @@ const Calculator: React.FC = () => {
           </Paper>
         </Box>
       </Box>
+
+      <Dialog open={editModalRecord !== null} onClose={handleEditModalClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit record</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField
+              label="Income"
+              type="number"
+              fullWidth
+              value={editIncome}
+              onChange={(e) => setEditIncome(e.target.value)}
+              inputProps={{ min: 0, step: 100 }}
+            />
+            <TextField
+              label="Number of kids"
+              type="number"
+              fullWidth
+              value={editNumberOfKids}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                setEditNumberOfKids(Number.isNaN(n) || n < 0 ? 0 : n);
+              }}
+              inputProps={{ min: 0, step: 1 }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleEditModalClose}>Cancel</Button>
+          <Button variant="contained" onClick={handleEditModalSave}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
