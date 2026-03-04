@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Autocomplete,
   Box,
@@ -91,6 +91,8 @@ type CalculationRecord = {
   /** For recalculating when editing numberOfKids */
   baseCostsInRecordCurrency?: number;
   childcarePerChildInRecordCurrency?: number;
+  /** Per-category costs in record currency for pie chart */
+  costBreakdown?: { name: string; value: number }[];
 };
 
 const RECORDS_STORAGE_KEY = 'colcalc_records';
@@ -115,6 +117,11 @@ function parseStoredRecords(raw: string | null): CalculationRecord[] {
         currency: (typeof rec.currency === 'string' && rec.currency in CURRENCIES ? rec.currency : 'USD') as keyof typeof CURRENCIES,
         baseCostsInRecordCurrency: typeof rec.baseCostsInRecordCurrency === 'number' ? rec.baseCostsInRecordCurrency : undefined,
         childcarePerChildInRecordCurrency: typeof rec.childcarePerChildInRecordCurrency === 'number' ? rec.childcarePerChildInRecordCurrency : undefined,
+        costBreakdown: Array.isArray(rec.costBreakdown)
+          ? (rec.costBreakdown as { name: string; value: number }[]).filter(
+              (x) => x && typeof x.name === 'string' && typeof x.value === 'number',
+            )
+          : undefined,
       };
     }).filter((r) => r.city && r.country);
   } catch {
@@ -325,7 +332,14 @@ const Calculator: React.FC = () => {
   const [numberOfKids, setNumberOfKids] = useState<number>(0);
 
   const [allCities, setAllCities] = useState<CityOption[]>([]);
-  const [citiesLoading, setCitiesLoading] = useState(true);
+  const [citiesLoading, setCitiesLoading] = useState(false);
+  const citiesLoadedRef = useRef(false);
+
+  const [cityInputDebounced, setCityInputDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setCityInputDebounced(city), 300);
+    return () => clearTimeout(t);
+  }, [city]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -349,13 +363,16 @@ const Calculator: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [citySearch, setCitySearch] = useState('');
+  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [editModalRecord, setEditModalRecord] = useState<CalculationRecord | null>(null);
   const [editIncome, setEditIncome] = useState('');
   const [editNumberOfKids, setEditNumberOfKids] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadCities = useCallback(() => {
+    if (citiesLoadedRef.current) return;
+    citiesLoadedRef.current = true;
     setCitiesLoading(true);
+    let cancelled = false;
     fetch(`${API_BASE}/cities`, { method: 'GET', headers: API_HEADERS })
       .then((res) => {
         if (!res.ok) throw new Error(`Cities fetch failed: ${res.status}`);
@@ -383,13 +400,35 @@ const Calculator: React.FC = () => {
         setAllCities(options);
       })
       .catch(() => {
-        if (!cancelled) setAllCities([]);
+        if (!cancelled) {
+          setAllCities([]);
+          citiesLoadedRef.current = false;
+        }
       })
       .finally(() => {
         if (!cancelled) setCitiesLoading(false);
       });
     return () => { cancelled = true; };
   }, []);
+
+  const filteredCityOptions = useMemo(() => {
+    const q = cityInputDebounced.trim().toLowerCase();
+    if (!q) return allCities;
+    return allCities.filter((c) => c.cityName.toLowerCase().includes(q));
+  }, [allCities, cityInputDebounced]);
+
+  // Keep country in sync whenever city exactly matches a known option (click or Enter)
+  useEffect(() => {
+    const trimmed = city.trim();
+    if (!trimmed) {
+      setCountry('');
+      return;
+    }
+    const found = allCities.find(
+      (c) => c.cityName.toLowerCase() === trimmed.toLowerCase(),
+    );
+    setCountry(found ? found.countryName : '');
+  }, [city, allCities]);
 
   const { totalUsd: rawTotalUsd, byCategory: rawByCategory } = useMemo(
     () => computeMonthlyCostsFromPrices(prices),
@@ -418,11 +457,27 @@ const Calculator: React.FC = () => {
 
   const chartData = useMemo(() => {
     if (!monthlyByCategory.size) return [];
-    return Array.from(monthlyByCategory.entries()).map(([name, valueUsd]) => ({
-      name,
-      value: valueUsd / effectiveRateFromUsd,
-    }));
+    return Array.from(monthlyByCategory.entries())
+      .map(([name, valueUsd]) => ({
+        name,
+        value: valueUsd / effectiveRateFromUsd,
+      }))
+      .filter(({ value }) => value > 0);
   }, [monthlyByCategory, effectiveRateFromUsd]);
+
+  const selectedRecord = useMemo(
+    () => (selectedRecordId != null ? records.find((r) => r.id === selectedRecordId) ?? null : null),
+    [records, selectedRecordId],
+  );
+
+  const pieChartData = useMemo(() => {
+    if (selectedRecord?.costBreakdown?.length) return selectedRecord.costBreakdown!;
+    return chartData;
+  }, [selectedRecord, chartData]);
+
+  const pieChartCurrency = selectedRecord
+    ? CURRENCIES[selectedRecord.currency]
+    : CURRENCIES[incomeCurrency];
 
   const filteredAndSortedRecords = useMemo(() => {
     const search = citySearch.trim().toLowerCase();
@@ -533,6 +588,16 @@ const Calculator: React.FC = () => {
       const childcarePerChildInRecordCurrency = (childcarePerChild / recordRate);
       const baseCostsInRecordCurrency = totalCostsInRecordCurrency - kids * childcarePerChildInRecordCurrency;
 
+      const costBreakdown: { name: string; value: number }[] = Array.from(
+        computedByCategory.entries(),
+      ).map(([name, valueUsd]) => ({
+        name,
+        value:
+          name === 'Childcare'
+            ? (childcarePerChild * kids) / recordRate
+            : valueUsd / recordRate,
+      }));
+
       const record: CalculationRecord = {
         id: Date.now(),
         city: city.trim(),
@@ -544,9 +609,11 @@ const Calculator: React.FC = () => {
         currency: incomeCurrency,
         baseCostsInRecordCurrency,
         childcarePerChildInRecordCurrency,
+        costBreakdown,
       };
 
       setRecords((prev) => [record, ...prev]);
+      setSelectedRecordId(record.id);
       setPage(0);
     } catch (err) {
       const message =
@@ -598,12 +665,21 @@ const Calculator: React.FC = () => {
           ? r.baseCostsInRecordCurrency! + newKids * r.childcarePerChildInRecordCurrency!
           : r.totalCosts;
         const newNetBudget = newIncome - newTotalCosts;
+        const costBreakdown =
+          r.costBreakdown?.length && typeof r.childcarePerChildInRecordCurrency === 'number'
+            ? r.costBreakdown.map((item) =>
+                item.name === 'Childcare'
+                  ? { ...item, value: newKids * r.childcarePerChildInRecordCurrency! }
+                  : item,
+              )
+            : r.costBreakdown;
         return {
           ...r,
           income: newIncome,
           numberOfKids: newKids,
           totalCosts: newTotalCosts,
           netBudget: newNetBudget,
+          costBreakdown,
         };
       }),
     );
@@ -612,14 +688,13 @@ const Calculator: React.FC = () => {
 
   return (
     <Box
-      component="main"
+      component="div"
       sx={{
         flex: 1,
-        p: 3,
         display: 'flex',
         flexDirection: 'column',
         gap: 3,
-        overflow: 'auto',
+        minHeight: 0,
       }}
     >
       <Typography variant="h4" gutterBottom>
@@ -667,7 +742,8 @@ const Calculator: React.FC = () => {
                 freeSolo
                 fullWidth
                 loading={citiesLoading}
-                options={allCities}
+                options={filteredCityOptions}
+                onOpen={() => loadCities()}
                 getOptionLabel={(option) =>
                   typeof option === 'string' ? option : option.cityName
                 }
@@ -682,13 +758,19 @@ const Calculator: React.FC = () => {
                 inputValue={city}
                 onInputChange={(_, value) => setCity(value)}
                 onChange={(_, newValue) => {
-                  const option =
-                    typeof newValue === 'string' ? null : newValue;
-                  if (option) {
+                  if (newValue && typeof newValue === 'object' && 'cityName' in newValue) {
+                    const option = newValue as CityOption;
                     setCity(option.cityName);
-                    setCountry(option.countryName);
+                    setCountry(option.countryName ?? '');
+                  } else if (typeof newValue === 'string') {
+                    setCity(newValue);
+                    const found = allCities.find(
+                      (c) => c.cityName.toLowerCase() === newValue.trim().toLowerCase(),
+                    );
+                    setCountry(found ? found.countryName : '');
                   } else {
-                    setCity(typeof newValue === 'string' ? newValue : '');
+                    setCity('');
+                    setCountry('');
                   }
                 }}
                 renderInput={(params) => (
@@ -706,8 +788,8 @@ const Calculator: React.FC = () => {
                 label="Country"
                 fullWidth
                 required
+                disabled
                 value={country}
-                onChange={(e) => setCountry(e.target.value)}
                 placeholder="Auto-filled when you select a city"
               />
               <TextField
@@ -783,43 +865,52 @@ const Calculator: React.FC = () => {
             <CardContent sx={{ height: 360 }}>
               <Typography variant="h6" gutterBottom>
                 Expenditure breakdown
+                {selectedRecord && (
+                  <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    — {selectedRecord.city}, {selectedRecord.country}
+                  </Typography>
+                )}
               </Typography>
-              {chartData.length ? (
-                <ResponsiveContainer width="100%" height="85%">
-                  <PieChart>
-                    <Pie
-                      data={chartData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius="75%"
-                      label={({
-                        name,
-                        value,
-                      }: {
-                        name: string;
-                        value: number;
-                      }) =>
-                        `${name}: ${Number(value).toFixed(2)} ${CURRENCIES[incomeCurrency].symbol}`
-                      }
-                    >
-                      {chartData.map((_, index) => (
-                        <Cell
-                          // eslint-disable-next-line react/no-array-index-key
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: number) =>
-                        `${value.toFixed(2)} ${CURRENCIES[incomeCurrency].symbol}`
-                      }
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
+              {pieChartData.length ? (
+                <Box sx={{ height: '85%', minHeight: 0, overflow: 'hidden' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                      <Pie
+                        data={pieChartData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius="75%"
+                        isAnimationActive
+                      >
+                        {pieChartData.map((_, index) => (
+                          <Cell
+                            // eslint-disable-next-line react/no-array-index-key
+                            key={`cell-${index}`}
+                            fill={COLORS[index % COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number, name: string) => [
+                          `${Number(value).toFixed(2)} ${pieChartCurrency.symbol}`,
+                          name,
+                        ]}
+                        contentStyle={{ maxWidth: '100%' }}
+                        wrapperStyle={{ outline: 'none' }}
+                      />
+                      <Legend
+                        wrapperStyle={{ overflow: 'hidden' }}
+                        formatter={(value: string) => <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Box>
+              ) : selectedRecord ? (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  No breakdown stored for this record.
+                </Typography>
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
                   Run a calculation to see the cost breakdown pie chart.
@@ -906,7 +997,13 @@ const Calculator: React.FC = () => {
               </TableHead>
               <TableBody>
                 {paginatedRecords.map((record) => (
-                  <TableRow key={record.id} hover>
+                  <TableRow
+                    key={record.id}
+                    hover
+                    selected={selectedRecordId === record.id}
+                    onClick={() => setSelectedRecordId(record.id)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <TableCell>{record.city}</TableCell>
                     <TableCell>{record.country}</TableCell>
                     <TableCell align="right">
@@ -924,7 +1021,7 @@ const Calculator: React.FC = () => {
                     >
                       {record.netBudget.toFixed(2)} {CURRENCIES[record.currency].symbol}
                     </TableCell>
-                    <TableCell align="center" sx={{ width: 100 }}>
+                    <TableCell align="center" sx={{ width: 100 }} onClick={(e) => e.stopPropagation()}>
                       <IconButton
                         size="small"
                         aria-label="Edit"

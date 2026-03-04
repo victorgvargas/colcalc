@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import Home from './components/Home/index.tsx';
 import Layout from './components/Layout/index.tsx';
 import Calculator from './components/Calculator/index.tsx';
+import CitiesComparison from './components/CitiesComparison/index.tsx';
 
 const router = createBrowserRouter([
   {
@@ -11,6 +12,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, Component: Home },
       { path: 'calculator', Component: Calculator },
+      { path: 'cities-comparison', Component: CitiesComparison },
     ],
   },
 ]);
