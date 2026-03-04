@@ -48,7 +48,10 @@ const SectionItem = styled(NavLink)`
 `;
 
 type SidebarProps = {
-    sections: { title: string; items: { href: string; alt: string }[] }[];
+    sections: { 
+      title: string;
+      items: { href: string; alt: string }[] 
+    }[];
 };
 
 const Sidebar = ({ sections }: SidebarProps) => {
