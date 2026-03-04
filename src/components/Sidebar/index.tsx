@@ -73,6 +73,31 @@ const SectionItem = styled(NavLink)`
   }
 `;
 
+const DonateSection = styled.div`
+  flex-shrink: 0;
+  padding-top: 12px;
+  border-top: 1px solid #ddd;
+`;
+
+const DonateLink = styled.a`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #0070ba 0%, #1546a0 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  &:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+`;
+
 type SidebarProps = {
     sections: { 
       title: string;
@@ -97,6 +122,15 @@ const Sidebar = ({ sections }: SidebarProps) => {
             </SidebarSection>
           ))}
         </SidebarNav>
+        <DonateSection>
+          <DonateLink
+            href="https://www.paypal.me/VIctorVargas997"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Donate via PayPal
+          </DonateLink>
+        </DonateSection>
     </StyledSidebar>
   );
 };
