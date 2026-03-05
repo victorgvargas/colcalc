@@ -58,12 +58,26 @@ function getCategoryFromItem(p: ApiPriceItem): string {
 }
 
 const MONTHLY_CATEGORY_PATTERNS = [
-  'rent', 'utilities', 'transport', 'internet', 'mobile', 'phone', 'childcare',
+  'rent',
+  'utilities',
+  'transport',
+  'internet',
+  'mobile',
+  'phone',
+  'childcare',
+  'markets',
 ] as const;
 
 const EXCLUDE_PATTERNS = [
-  'buy apartment', 'price per square', 'price per sq', 'markets', 'restaurants',
-  'clothing', 'sports', 'cinema', 'one-time', 'purchase',
+  'buy apartment',
+  'price per square',
+  'price per sq',
+  'restaurants',
+  'clothing',
+  'sports',
+  'cinema',
+  'one-time',
+  'purchase',
 ] as const;
 
 function isMonthlyRecurringCategory(p: ApiPriceItem): boolean {
@@ -87,6 +101,10 @@ const PER_UNIT_OR_ONE_OFF = [
 
 const TRANSPORT_MONTHLY_CAP_USD = 600;
 const CHILDCARE_MONTHLY_CAP_USD = 4000;
+
+// Heuristic multipliers to turn unit prices into a more realistic monthly spend.
+const MARKETS_BASKET_MULTIPLIER = 4;
+const TRANSPORT_MONTHLY_MULTIPLIER = 1.5;
 
 function looksLikeMonthlyItem(p: ApiPriceItem): boolean {
   const item = ((p.item_name ?? p.item ?? '') as string).toLowerCase();
@@ -124,6 +142,7 @@ export function computeMonthlyCostsFromPrices(
       /apartment|1 bedroom|3 bedroom|1 bed|3 bed/i.test(catLower);
     const isTransport = catLower.includes('transport');
     const isChildcare = catLower.includes('childcare');
+    const isMarkets = catLower.includes('markets');
 
     if (!isMonthlyRecurringCategory(p)) continue;
 
@@ -131,6 +150,10 @@ export function computeMonthlyCostsFromPrices(
       const list = listByCategory.get('Rent') ?? [];
       list.push(value);
       listByCategory.set('Rent', list);
+    } else if (isMarkets) {
+      const list = listByCategory.get('MarketsRaw') ?? [];
+      list.push(value);
+      listByCategory.set('MarketsRaw', list);
     } else if (isTransport) {
       if (!looksLikeMonthlyItem(p)) continue;
       if (value > TRANSPORT_MONTHLY_CAP_USD) continue;
@@ -151,11 +174,21 @@ export function computeMonthlyCostsFromPrices(
   const byCategory = new Map<string, number>(sumByCategory);
   for (const [cat, list] of listByCategory) {
     if (list.length > 0) {
-      const val =
-        cat === 'Rent'
-          ? list.reduce((a, b) => a + b, 0) / list.length
-          : median(list);
-      byCategory.set(cat, (byCategory.get(cat) ?? 0) + val);
+      if (cat === 'Rent') {
+        const avgRent = list.reduce((a, b) => a + b, 0) / list.length;
+        byCategory.set('Rent', (byCategory.get('Rent') ?? 0) + avgRent);
+      } else if (cat === 'Transportation') {
+        const base = median(list);
+        const val = base * TRANSPORT_MONTHLY_MULTIPLIER;
+        byCategory.set('Transportation', (byCategory.get('Transportation') ?? 0) + val);
+      } else if (cat === 'MarketsRaw') {
+        const rawSum = list.reduce((a, b) => a + b, 0);
+        const monthlyMarkets = rawSum * MARKETS_BASKET_MULTIPLIER;
+        byCategory.set('Markets', (byCategory.get('Markets') ?? 0) + monthlyMarkets);
+      } else {
+        const val = median(list);
+        byCategory.set(cat, (byCategory.get(cat) ?? 0) + val);
+      }
     }
   }
 
@@ -191,10 +224,15 @@ export async function fetchCities(): Promise<CityOption[]> {
   return options;
 }
 
+export type CityPricesResult = {
+  prices: ApiPriceItem[];
+  exchangeRate: Record<string, number> | null;
+};
+
 export async function fetchPricesForCity(
   cityName: string,
   countryName: string,
-): Promise<ApiPriceItem[]> {
+): Promise<CityPricesResult> {
   const url = new URL(`${API_BASE}/prices`);
   url.searchParams.set('city_name', cityName.trim());
   url.searchParams.set('country_name', countryName.trim());
@@ -204,10 +242,20 @@ export async function fetchPricesForCity(
   if (data.error) {
     throw new Error(typeof data.error === 'string' ? data.error : 'API returned an error.');
   }
-  if (Array.isArray(data.prices)) return data.prices;
-  if (data.prices && typeof data.prices === 'object' && !Array.isArray(data.prices)) {
+  let fetchedPrices: ApiPriceItem[] = [];
+  if (Array.isArray(data.prices)) {
+    fetchedPrices = data.prices;
+  } else if (data.prices && typeof data.prices === 'object' && !Array.isArray(data.prices)) {
     const vals = Object.values(data.prices);
-    return vals.flat().filter((x): x is ApiPriceItem => x != null && typeof x === 'object');
+    fetchedPrices = vals.flat().filter(
+      (x): x is ApiPriceItem => x != null && typeof x === 'object',
+    );
   }
-  return [];
+
+  const exchangeRate =
+    data.exchange_rate && typeof data.exchange_rate === 'object'
+      ? data.exchange_rate
+      : null;
+
+  return { prices: fetchedPrices, exchangeRate };
 }

@@ -172,6 +172,7 @@ const MONTHLY_CATEGORY_PATTERNS = [
   'mobile',
   'phone',
   'childcare',
+  'markets',
 ] as const;
 
 /** Categories/items to exclude (one-time, per-unit, or not monthly). */
@@ -179,7 +180,6 @@ const EXCLUDE_PATTERNS = [
   'buy apartment',
   'price per square',
   'price per sq',
-  'markets',
   'restaurants',
   'clothing',
   'sports',
@@ -222,6 +222,10 @@ const PER_UNIT_OR_ONE_OFF = [
 const TRANSPORT_MONTHLY_CAP_USD = 600;
 const CHILDCARE_MONTHLY_CAP_USD = 4000;
 
+// Heuristic multipliers to turn unit prices into a more realistic monthly spend.
+const MARKETS_BASKET_MULTIPLIER = 4;
+const TRANSPORT_MONTHLY_MULTIPLIER = 1.5;
+
 function looksLikeMonthlyItem(p: ApiPriceItem): boolean {
   const item = ((p.item_name ?? p.item ?? '') as string).toLowerCase();
   const cat = ((p.category_name ?? p.category ?? '') as string).toLowerCase();
@@ -263,6 +267,7 @@ function computeMonthlyCostsFromPrices(
       /apartment|1 bedroom|3 bedroom|1 bed|3 bed/i.test(catLower);
     const isTransport = catLower.includes('transport');
     const isChildcare = catLower.includes('childcare');
+    const isMarkets = catLower.includes('markets');
 
     if (!isMonthlyRecurringCategory(p)) continue;
 
@@ -270,6 +275,10 @@ function computeMonthlyCostsFromPrices(
       const list = listByCategory.get('Rent') ?? [];
       list.push(value);
       listByCategory.set('Rent', list);
+    } else if (isMarkets) {
+      const list = listByCategory.get('MarketsRaw') ?? [];
+      list.push(value);
+      listByCategory.set('MarketsRaw', list);
     } else if (isTransport) {
       if (!looksLikeMonthlyItem(p)) continue;
       if (value > TRANSPORT_MONTHLY_CAP_USD) continue;
@@ -290,11 +299,21 @@ function computeMonthlyCostsFromPrices(
   const byCategory = new Map<string, number>(sumByCategory);
   for (const [cat, list] of listByCategory) {
     if (list.length > 0) {
-      const val =
-        cat === 'Rent'
-          ? list.reduce((a, b) => a + b, 0) / list.length
-          : median(list);
-      byCategory.set(cat, (byCategory.get(cat) ?? 0) + val);
+      if (cat === 'Rent') {
+        const avgRent = list.reduce((a, b) => a + b, 0) / list.length;
+        byCategory.set('Rent', (byCategory.get('Rent') ?? 0) + avgRent);
+      } else if (cat === 'Transportation') {
+        const base = median(list);
+        const val = base * TRANSPORT_MONTHLY_MULTIPLIER;
+        byCategory.set('Transportation', (byCategory.get('Transportation') ?? 0) + val);
+      } else if (cat === 'MarketsRaw') {
+        const rawSum = list.reduce((a, b) => a + b, 0);
+        const monthlyMarkets = rawSum * MARKETS_BASKET_MULTIPLIER;
+        byCategory.set('Markets', (byCategory.get('Markets') ?? 0) + monthlyMarkets);
+      } else {
+        const val = median(list);
+        byCategory.set(cat, (byCategory.get(cat) ?? 0) + val);
+      }
     }
   }
 
@@ -437,20 +456,20 @@ const Calculator: React.FC = () => {
   );
 
   const { totalUsd: totalCostsUsd, byCategory: monthlyByCategory } = useMemo(() => {
-    const childcarePerChild = rawByCategory.get('Childcare') ?? 0;
+    const childcarePerChildUsd = rawByCategory.get('Childcare') ?? 0;
     const kids = Math.max(0, numberOfKids);
-    const childcareTotal = childcarePerChild * kids;
-    const adjustedTotal = rawTotalUsd - childcarePerChild + childcareTotal;
+    const childcareTotalUsd = childcarePerChildUsd * kids;
+    const adjustedTotalUsd = rawTotalUsd - childcarePerChildUsd + childcareTotalUsd;
     const adjustedByCategory = new Map(rawByCategory);
-    adjustedByCategory.set('Childcare', childcareTotal);
-    return { totalUsd: adjustedTotal, byCategory: adjustedByCategory };
+    adjustedByCategory.set('Childcare', childcareTotalUsd);
+    return { totalUsd: adjustedTotalUsd, byCategory: adjustedByCategory };
   }, [rawTotalUsd, rawByCategory, numberOfKids]);
 
-  const effectiveRateFromUsd =
-    apiExchangeRates && 'EUR' in apiExchangeRates && Number(apiExchangeRates.EUR) > 0
+  const effectiveEurPerUsd =
+    apiExchangeRates && typeof apiExchangeRates.EUR === 'number' && apiExchangeRates.EUR > 0
       ? Number(apiExchangeRates.EUR)
-      : CURRENCIES.EUR.rateToUsd;
-  const totalCostsInCurrency = totalCostsUsd / effectiveRateFromUsd;
+      : 1 / CURRENCIES.EUR.rateToUsd;
+  const totalCostsInCurrency = totalCostsUsd * effectiveEurPerUsd;
   const netBudget = useMemo(() => {
     const numericIncome = Number(income) || 0;
     return numericIncome - totalCostsInCurrency;
@@ -461,10 +480,10 @@ const Calculator: React.FC = () => {
     return Array.from(monthlyByCategory.entries())
       .map(([name, valueUsd]) => ({
         name,
-        value: valueUsd / effectiveRateFromUsd,
+        value: valueUsd * effectiveEurPerUsd,
       }))
       .filter(({ value }) => value > 0);
-  }, [monthlyByCategory, effectiveRateFromUsd]);
+  }, [monthlyByCategory, effectiveEurPerUsd]);
 
   const selectedRecord = useMemo(
     () => (selectedRecordId != null ? records.find((r) => r.id === selectedRecordId) ?? null : null),
@@ -472,7 +491,14 @@ const Calculator: React.FC = () => {
   );
 
   const pieChartData = useMemo(() => {
-    if (selectedRecord?.costBreakdown?.length) return selectedRecord.costBreakdown!;
+    if (selectedRecord?.costBreakdown?.length) {
+      const kids = selectedRecord.numberOfKids ?? 0;
+      return selectedRecord.costBreakdown.filter((item) => {
+        if (item.value <= 0) return false;
+        if (kids === 0 && item.name === 'Childcare') return false;
+        return true;
+      });
+    }
     return chartData;
   }, [selectedRecord, chartData]);
 
@@ -589,26 +615,33 @@ const Calculator: React.FC = () => {
 
       const { totalUsd: computedTotalCostsUsd, byCategory: computedByCategory } =
         computeMonthlyCostsFromPrices(fetchedPrices);
-      const childcarePerChild = computedByCategory.get('Childcare') ?? 0;
+      const childcarePerChildUsd = computedByCategory.get('Childcare') ?? 0;
       const kids = Math.max(0, numberOfKids);
-      const adjustedTotalUsd = computedTotalCostsUsd - childcarePerChild + childcarePerChild * kids;
-      const recordRate =
-        data.exchange_rate && 'EUR' in data.exchange_rate && Number((data.exchange_rate as Record<string, number>).EUR) > 0
-          ? Number((data.exchange_rate as Record<string, number>).EUR)
-          : CURRENCIES.EUR.rateToUsd;
-      const totalCostsInRecordCurrency = adjustedTotalUsd / recordRate;
-      const childcarePerChildInRecordCurrency = (childcarePerChild / recordRate);
-      const baseCostsInRecordCurrency = totalCostsInRecordCurrency - kids * childcarePerChildInRecordCurrency;
+      const adjustedTotalUsd =
+        computedTotalCostsUsd - childcarePerChildUsd + childcarePerChildUsd * kids;
+
+      const eurPerUsdRate =
+        data.exchange_rate &&
+        typeof data.exchange_rate.EUR === 'number' &&
+        data.exchange_rate.EUR > 0
+          ? data.exchange_rate.EUR
+          : 1 / CURRENCIES.EUR.rateToUsd;
+
+      const totalCostsInRecordCurrency = adjustedTotalUsd * eurPerUsdRate;
+      const childcarePerChildInRecordCurrency = childcarePerChildUsd * eurPerUsdRate;
+      const baseCostsInRecordCurrency =
+        totalCostsInRecordCurrency - kids * childcarePerChildInRecordCurrency;
 
       const costBreakdown: { name: string; value: number }[] = Array.from(
         computedByCategory.entries(),
-      ).map(([name, valueUsd]) => ({
-        name,
-        value:
-          name === 'Childcare'
-            ? (childcarePerChild * kids) / recordRate
-            : valueUsd / recordRate,
-      }));
+      ).map(([name, valueUsd]) => {
+        const baseValueUsd =
+          name === 'Childcare' ? childcarePerChildUsd * kids : valueUsd;
+        return {
+          name,
+          value: baseValueUsd * eurPerUsdRate,
+        };
+      });
 
       const record: CalculationRecord = {
         id: Date.now(),

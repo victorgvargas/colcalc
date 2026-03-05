@@ -23,6 +23,7 @@ import {
   fetchPricesForCity,
   computeMonthlyCostsFromPrices,
   type CityOption,
+  type CityPricesResult,
 } from '../../api/costOfLiving';
 
 const MIN_CITIES = 2;
@@ -125,12 +126,25 @@ const CitiesComparison: React.FC = () => {
     setError(null);
     setCompareLoading(true);
     try {
-      const results = await Promise.all(
+      const FALLBACK_EUR_PER_USD = 1 / 1.08;
+
+      const results: {
+        label: string;
+        byCategory: Map<string, number>;
+        eurPerUsdRate: number;
+      }[] = await Promise.all(
         validEntries.map(async (e) => {
-          const prices = await fetchPricesForCity(e.cityName, e.countryName);
+          const { prices, exchangeRate }: CityPricesResult = await fetchPricesForCity(
+            e.cityName,
+            e.countryName,
+          );
           const { byCategory } = computeMonthlyCostsFromPrices(prices);
+          const eurPerUsdRate =
+            exchangeRate && typeof exchangeRate.EUR === 'number' && exchangeRate.EUR > 0
+              ? exchangeRate.EUR
+              : FALLBACK_EUR_PER_USD;
           const label = `${e.cityName}, ${e.countryName}`;
-          return { label, byCategory };
+          return { label, byCategory, eurPerUsdRate };
         }),
       );
 
@@ -147,9 +161,11 @@ const CitiesComparison: React.FC = () => {
         const row: { category: string; [cityLabel: string]: string | number } = {
           category,
         };
-        labels.forEach((label, i) => {
-          const value = results[i]?.byCategory.get(category) ?? 0;
-          row[label] = Math.round(value * 100) / 100;
+        labels.forEach((label) => {
+          const cityResult = results.find((r) => r.label === label);
+          const valueUsd = cityResult?.byCategory.get(category) ?? 0;
+          const eurPerUsdRate = cityResult?.eurPerUsdRate ?? FALLBACK_EUR_PER_USD;
+          row[label] = Math.round(valueUsd * eurPerUsdRate * 100) / 100;
         });
         return row;
       });
@@ -285,7 +301,7 @@ const CitiesComparison: React.FC = () => {
                   />
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip
-                    formatter={(value: number) => [`$${Number(value).toFixed(2)}`, '']}
+                    formatter={(value: number) => [`€${Number(value).toFixed(2)}`, '']}
                     contentStyle={{ maxWidth: '100%' }}
                   />
                   <Legend wrapperStyle={{ overflow: 'hidden' }} />
