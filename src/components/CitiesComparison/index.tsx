@@ -5,6 +5,8 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
+  FormControlLabel,
   TextField,
   Typography,
 } from '@mui/material';
@@ -29,8 +31,18 @@ import {
 const MIN_CITIES = 2;
 const MAX_CITIES = 5;
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AA46BE'];
+const TOTAL_CATEGORY_KEY = 'Total costs';
+const CHILDCARE_CATEGORY_KEY = 'Childcare';
+const FALLBACK_EUR_PER_USD = 1 / 1.08;
 
 type CityEntry = { cityName: string; countryName: string };
+
+type CityComparisonResult = {
+  label: string;
+  byCategory: Map<string, number>;
+  eurPerUsdRate: number;
+  totalUsd: number;
+};
 
 const CitiesComparison: React.FC = () => {
   const [allCities, setAllCities] = useState<CityOption[]>([]);
@@ -43,8 +55,9 @@ const CitiesComparison: React.FC = () => {
   ]);
   const [compareLoading, setCompareLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [categoryData, setCategoryData] = useState<{ category: string; [cityLabel: string]: string | number }[]>([]);
+  const [comparisonResults, setComparisonResults] = useState<CityComparisonResult[]>([]);
   const [cityLabels, setCityLabels] = useState<string[]>([]);
+  const [includeChildcare, setIncludeChildcare] = useState(true);
 
   const loadCities = useCallback(() => {
     if (citiesLoadedRef.current) return;
@@ -126,59 +139,77 @@ const CitiesComparison: React.FC = () => {
     setError(null);
     setCompareLoading(true);
     try {
-      const FALLBACK_EUR_PER_USD = 1 / 1.08;
-
       const results: {
         label: string;
         byCategory: Map<string, number>;
         eurPerUsdRate: number;
+        totalUsd: number;
       }[] = await Promise.all(
         validEntries.map(async (e) => {
           const { prices, exchangeRate }: CityPricesResult = await fetchPricesForCity(
             e.cityName,
             e.countryName,
           );
-          const { byCategory } = computeMonthlyCostsFromPrices(prices);
+          const { byCategory, totalUsd } = computeMonthlyCostsFromPrices(prices);
           const eurPerUsdRate =
             exchangeRate && typeof exchangeRate.EUR === 'number' && exchangeRate.EUR > 0
               ? exchangeRate.EUR
               : FALLBACK_EUR_PER_USD;
           const label = `${e.cityName}, ${e.countryName}`;
-          return { label, byCategory, eurPerUsdRate };
+          return { label, byCategory, eurPerUsdRate, totalUsd };
         }),
       );
 
-      const categorySet = new Set<string>();
-      results.forEach((r) => {
-        r.byCategory.forEach((_, cat) => categorySet.add(cat));
-      });
-      const categories = Array.from(categorySet).sort();
-
       const labels = results.map((r) => r.label);
       setCityLabels(labels);
-
-      const chartData = categories.map((category) => {
-        const row: { category: string; [cityLabel: string]: string | number } = {
-          category,
-        };
-        labels.forEach((label) => {
-          const cityResult = results.find((r) => r.label === label);
-          const valueUsd = cityResult?.byCategory.get(category) ?? 0;
-          const eurPerUsdRate = cityResult?.eurPerUsdRate ?? FALLBACK_EUR_PER_USD;
-          row[label] = Math.round(valueUsd * eurPerUsdRate * 100) / 100;
-        });
-        return row;
-      });
-
-      setCategoryData(chartData);
+      setComparisonResults(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cost data.');
-      setCategoryData([]);
+      setComparisonResults([]);
       setCityLabels([]);
     } finally {
       setCompareLoading(false);
     }
   };
+
+  const categoryData = useMemo(
+    () => {
+      if (!comparisonResults.length || !cityLabels.length) return [];
+
+      const categorySet = new Set<string>();
+      comparisonResults.forEach((r) => {
+        r.byCategory.forEach((_, cat) => {
+          if (!includeChildcare && cat === CHILDCARE_CATEGORY_KEY) return;
+          categorySet.add(cat);
+        });
+      });
+      const categories = Array.from(categorySet).sort();
+      categories.push(TOTAL_CATEGORY_KEY);
+
+      return categories.map((category) => {
+        const row: { category: string; [cityLabel: string]: string | number } = {
+          category,
+        };
+        cityLabels.forEach((label) => {
+          const cityResult = comparisonResults.find((r) => r.label === label);
+          const eurPerUsdRate = cityResult?.eurPerUsdRate ?? FALLBACK_EUR_PER_USD;
+          const childcareUsd = cityResult?.byCategory.get(CHILDCARE_CATEGORY_KEY) ?? 0;
+          const baseTotalUsd = cityResult?.totalUsd ?? 0;
+
+          let valueUsd: number;
+          if (category === TOTAL_CATEGORY_KEY) {
+            valueUsd = includeChildcare ? baseTotalUsd : baseTotalUsd - childcareUsd;
+          } else {
+            valueUsd = cityResult?.byCategory.get(category) ?? 0;
+          }
+
+          row[label] = Math.round(valueUsd * eurPerUsdRate * 100) / 100;
+        });
+        return row;
+      });
+    },
+    [comparisonResults, cityLabels, includeChildcare],
+  );
 
   const getFilteredOptions = useCallback((query: string) => {
     const q = query.trim().toLowerCase();
@@ -196,7 +227,13 @@ const CitiesComparison: React.FC = () => {
       </Typography>
 
       <Card>
-        <CardContent>
+        <CardContent
+          component="form"
+          onSubmit={(event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            void handleCompare();
+          }}
+        >
           <Typography variant="h6" gutterBottom color="#444">
             Select cities (2 to 5)
           </Typography>
@@ -266,8 +303,8 @@ const CitiesComparison: React.FC = () => {
           </Box>
           <Box sx={{ mt: 2 }}>
             <Button
+              type="submit"
               variant="contained"
-              onClick={handleCompare}
               disabled={compareLoading || validEntries.length < MIN_CITIES}
             >
               {compareLoading ? 'Loading…' : 'Compare'}
@@ -287,6 +324,18 @@ const CitiesComparison: React.FC = () => {
             <Typography variant="h6" gutterBottom color="#444">
               Monthly costs by category
             </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={includeChildcare}
+                    onChange={(event) => setIncludeChildcare(event.target.checked)}
+                  />
+                }
+                label="Include childcare"
+              />
+            </Box>
             <Box sx={{ width: '100%', height: 400, overflow: 'hidden' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
