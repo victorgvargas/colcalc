@@ -1,5 +1,6 @@
 import styled from "styled-components";
 import Sidebar from "../Sidebar";
+import SEO from "../SEO";
 import { Outlet } from "react-router-dom";
 
 const Container = styled.div`
@@ -45,6 +46,7 @@ const Layout = () => {
 
     return (
         <Container>
+            <SEO />
             <Sidebar sections={sidebarSections}/>
             <MainContent>
                 <Outlet />

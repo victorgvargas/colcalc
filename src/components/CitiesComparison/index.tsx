@@ -172,7 +172,7 @@ const CitiesComparison: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Typography variant="h5" fontWeight={600} color="#444">
+      <Typography component="h1" variant="h5" fontWeight={600} color="#444">
         Cities comparison
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: -0.5, mb: 0.5 }}>

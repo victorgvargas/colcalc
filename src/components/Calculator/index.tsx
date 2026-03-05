@@ -708,7 +708,7 @@ const Calculator: React.FC = () => {
         minHeight: 0,
       }}
     >
-      <Typography variant="h4" gutterBottom>
+      <Typography component="h1" variant="h4" gutterBottom>
         Cost of Living Calculator
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: -1, mb: 1 }}>

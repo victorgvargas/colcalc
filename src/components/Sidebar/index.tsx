@@ -37,7 +37,7 @@ const Logo = styled.img`
   width: 32px;
 `;
 
-const HeaderTitle = styled.h1`
+const HeaderTitle = styled.div`
   margin-inline-start: 10px;
   color: #444;
   font-size: 1.25rem;
