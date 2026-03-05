@@ -5,21 +5,10 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
-  FormControlLabel,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
 import {
   fetchCities,
   fetchPricesForCity,
@@ -27,24 +16,27 @@ import {
   type CityOption,
   type CityPricesResult,
 } from '../../api/costOfLiving';
-import { getUsdRates, getUsdToCurrencyRate } from '../../api/exchangeRates';
 
 const MIN_CITIES = 2;
 const MAX_CITIES = 5;
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AA46BE'];
-const TOTAL_CATEGORY_KEY = 'Total costs';
-const CHILDCARE_CATEGORY_KEY = 'Childcare';
-const FALLBACK_EUR_PER_USD = 1 / 1.08;
+
+const PPP_CURRENCIES = {
+  EUR: { name: 'Euro', symbol: 'EUR' },
+  USD: { name: 'US Dollar', symbol: 'USD' },
+  GBP: { name: 'British Pound', symbol: 'GBP' },
+  CHF: { name: 'Swiss Franc', symbol: 'CHF' },
+} as const;
+
+type PppCurrencyCode = keyof typeof PPP_CURRENCIES;
 
 type CityEntry = { cityName: string; countryName: string };
 
-type CityComparisonResult = {
+type CityTotalResult = {
   label: string;
-  byCategory: Map<string, number>;
   totalUsd: number;
 };
 
-const CitiesComparison: React.FC = () => {
+const PurchasingPower: React.FC = () => {
   const [allCities, setAllCities] = useState<CityOption[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const citiesLoadedRef = useRef(false);
@@ -55,24 +47,9 @@ const CitiesComparison: React.FC = () => {
   ]);
   const [compareLoading, setCompareLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [comparisonResults, setComparisonResults] = useState<CityComparisonResult[]>([]);
-  const [cityLabels, setCityLabels] = useState<string[]>([]);
-  const [includeChildcare, setIncludeChildcare] = useState(true);
-  const [usdRates, setUsdRates] = useState<Record<string, number> | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getUsdRates()
-      .then((rates) => {
-        if (!cancelled) setUsdRates(rates);
-      })
-      .catch(() => {
-        if (!cancelled) setUsdRates(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [results, setResults] = useState<CityTotalResult[]>([]);
+  const [pppIncome, setPppIncome] = useState<string>('');
+  const [pppCurrency, setPppCurrency] = useState<PppCurrencyCode>('EUR');
 
   const loadCities = useCallback(() => {
     if (citiesLoadedRef.current) return;
@@ -154,72 +131,44 @@ const CitiesComparison: React.FC = () => {
     setError(null);
     setCompareLoading(true);
     try {
-      const results: {
-        label: string;
-        byCategory: Map<string, number>;
-        totalUsd: number;
-      }[] = await Promise.all(
+      const totals: CityTotalResult[] = await Promise.all(
         validEntries.map(async (e) => {
           const { prices }: CityPricesResult = await fetchPricesForCity(
             e.cityName,
             e.countryName,
           );
-          const { byCategory, totalUsd } = computeMonthlyCostsFromPrices(prices);
+          const { totalUsd } = computeMonthlyCostsFromPrices(prices);
           const label = `${e.cityName}, ${e.countryName}`;
-          return { label, byCategory, totalUsd };
+          return { label, totalUsd };
         }),
       );
-
-      const labels = results.map((r) => r.label);
-      setCityLabels(labels);
-      setComparisonResults(results);
+      setResults(totals);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cost data.');
-      setComparisonResults([]);
-      setCityLabels([]);
+      setResults([]);
     } finally {
       setCompareLoading(false);
     }
   };
 
-  const categoryData = useMemo(
+  const pppRows = useMemo(
     () => {
-      if (!comparisonResults.length || !cityLabels.length) return [];
+      if (!results.length) return [];
+      const base = results[0];
+      const baseTotalUsd = base.totalUsd;
+      const income = Number(pppIncome);
+      if (!baseTotalUsd || !Number.isFinite(income) || income <= 0) return [];
 
-      const eurPerUsdRate = getUsdToCurrencyRate(usdRates, 'EUR', FALLBACK_EUR_PER_USD);
-
-      const categorySet = new Set<string>();
-      comparisonResults.forEach((r) => {
-        r.byCategory.forEach((_, cat) => {
-          if (!includeChildcare && cat === CHILDCARE_CATEGORY_KEY) return;
-          categorySet.add(cat);
-        });
-      });
-      const categories = Array.from(categorySet).sort();
-      categories.push(TOTAL_CATEGORY_KEY);
-
-      return categories.map((category) => {
-        const row: { category: string; [cityLabel: string]: string | number } = {
-          category,
-        };
-        cityLabels.forEach((label) => {
-          const cityResult = comparisonResults.find((r) => r.label === label);
-          const childcareUsd = cityResult?.byCategory.get(CHILDCARE_CATEGORY_KEY) ?? 0;
-          const baseTotalUsd = cityResult?.totalUsd ?? 0;
-
-          let valueUsd: number;
-          if (category === TOTAL_CATEGORY_KEY) {
-            valueUsd = includeChildcare ? baseTotalUsd : baseTotalUsd - childcareUsd;
-          } else {
-            valueUsd = cityResult?.byCategory.get(category) ?? 0;
-          }
-
-          row[label] = Math.round(valueUsd * eurPerUsdRate * 100) / 100;
-        });
-        return row;
+      return results.map((result, index) => {
+        if (!result.totalUsd || result.totalUsd <= 0) {
+          return { label: result.label, income: 0 };
+        }
+        const ratio = result.totalUsd / baseTotalUsd;
+        const cityIncome = index === 0 ? income : income * ratio;
+        return { label: result.label, income: cityIncome };
       });
     },
-    [comparisonResults, cityLabels, includeChildcare],
+    [results, pppIncome],
   );
 
   const getFilteredOptions = useCallback((query: string) => {
@@ -231,10 +180,10 @@ const CitiesComparison: React.FC = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Typography component="h1" variant="h5" fontWeight={600} color="#444">
-        Cities comparison
+        Purchasing power parity
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: -0.5, mb: 0.5 }}>
-        Results are shown in EUR.
+        Select cities, set an income in the first city, and see equivalent incomes in the others.
       </Typography>
 
       <Card>
@@ -329,60 +278,62 @@ const CitiesComparison: React.FC = () => {
         </CardContent>
       </Card>
 
-      {categoryData.length > 0 && (
+      {results.length > 0 && (
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom color="#444">
-              Monthly costs by category
+              Equivalent incomes
             </Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    size="small"
-                    checked={includeChildcare}
-                    onChange={(event) => setIncludeChildcare(event.target.checked)}
-                  />
-                }
-                label="Include childcare"
+            {results.length > 0 && (
+              <Typography variant="body2" color="text.secondary">
+                Base city: {results[0].label}
+              </Typography>
+            )}
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 2,
+                mt: 2,
+              }}
+            >
+              <TextField
+                label="Income in base city"
+                type="number"
+                value={pppIncome}
+                onChange={(event) => setPppIncome(event.target.value)}
+                fullWidth
+                inputProps={{ min: 0, step: 100 }}
               />
+              <TextField
+                select
+                label="Currency"
+                fullWidth
+                value={pppCurrency}
+                onChange={(event) => setPppCurrency(event.target.value as PppCurrencyCode)}
+              >
+                {Object.entries(PPP_CURRENCIES).map(([code, { name, symbol }]) => (
+                  <MenuItem key={code} value={code}>
+                    {name} ({symbol})
+                  </MenuItem>
+                ))}
+              </TextField>
             </Box>
-            <Box sx={{ width: '100%', height: 400, overflow: 'hidden' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={categoryData}
-                  margin={{ top: 16, right: 16, left: 8, bottom: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                  <XAxis
-                    dataKey="category"
-                    tick={{ fontSize: 12 }}
-                    tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
-                  />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip
-                    formatter={(value: number) => [`€${Number(value).toFixed(2)}`, '']}
-                    contentStyle={{ maxWidth: '100%' }}
-                  />
-                  <Legend wrapperStyle={{ overflow: 'hidden' }} />
-                  {cityLabels.map((label, i) => (
-                    <Bar
-                      key={label}
-                      dataKey={label}
-                      name={label}
-                      fill={COLORS[i % COLORS.length]}
-                      radius={[2, 2, 0, 0]}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </Box>
+            {pppRows.length > 0 && (
+              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {pppRows.map((row) => (
+                  <Typography key={row.label} variant="body2">
+                    {row.label}: {row.income.toFixed(2)} {PPP_CURRENCIES[pppCurrency].symbol}
+                  </Typography>
+                ))}
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}
-
     </Box>
   );
 };
 
-export default CitiesComparison;
+export default PurchasingPower;
+

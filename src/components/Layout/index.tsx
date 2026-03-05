@@ -39,6 +39,12 @@ const Layout = () => {
         {
             title: "none",
             items: [
+                { href: "/purchasing-power", alt: "Purchasing power parity" },
+            ]
+        },
+        {
+            title: "none",
+            items: [
                 { href: "/tax-calculator", alt: "Tax calculator" },
             ]
         }
