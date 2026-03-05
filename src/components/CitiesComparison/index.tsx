@@ -27,6 +27,7 @@ import {
   type CityOption,
   type CityPricesResult,
 } from '../../api/costOfLiving';
+import { getUsdRates, getUsdToCurrencyRate } from '../../api/exchangeRates';
 
 const MIN_CITIES = 2;
 const MAX_CITIES = 5;
@@ -40,7 +41,6 @@ type CityEntry = { cityName: string; countryName: string };
 type CityComparisonResult = {
   label: string;
   byCategory: Map<string, number>;
-  eurPerUsdRate: number;
   totalUsd: number;
 };
 
@@ -58,6 +58,21 @@ const CitiesComparison: React.FC = () => {
   const [comparisonResults, setComparisonResults] = useState<CityComparisonResult[]>([]);
   const [cityLabels, setCityLabels] = useState<string[]>([]);
   const [includeChildcare, setIncludeChildcare] = useState(true);
+  const [usdRates, setUsdRates] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUsdRates()
+      .then((rates) => {
+        if (!cancelled) setUsdRates(rates);
+      })
+      .catch(() => {
+        if (!cancelled) setUsdRates(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadCities = useCallback(() => {
     if (citiesLoadedRef.current) return;
@@ -142,21 +157,16 @@ const CitiesComparison: React.FC = () => {
       const results: {
         label: string;
         byCategory: Map<string, number>;
-        eurPerUsdRate: number;
         totalUsd: number;
       }[] = await Promise.all(
         validEntries.map(async (e) => {
-          const { prices, exchangeRate }: CityPricesResult = await fetchPricesForCity(
+          const { prices }: CityPricesResult = await fetchPricesForCity(
             e.cityName,
             e.countryName,
           );
           const { byCategory, totalUsd } = computeMonthlyCostsFromPrices(prices);
-          const eurPerUsdRate =
-            exchangeRate && typeof exchangeRate.EUR === 'number' && exchangeRate.EUR > 0
-              ? exchangeRate.EUR
-              : FALLBACK_EUR_PER_USD;
           const label = `${e.cityName}, ${e.countryName}`;
-          return { label, byCategory, eurPerUsdRate, totalUsd };
+          return { label, byCategory, totalUsd };
         }),
       );
 
@@ -176,6 +186,8 @@ const CitiesComparison: React.FC = () => {
     () => {
       if (!comparisonResults.length || !cityLabels.length) return [];
 
+      const eurPerUsdRate = getUsdToCurrencyRate(usdRates, 'EUR', FALLBACK_EUR_PER_USD);
+
       const categorySet = new Set<string>();
       comparisonResults.forEach((r) => {
         r.byCategory.forEach((_, cat) => {
@@ -192,7 +204,6 @@ const CitiesComparison: React.FC = () => {
         };
         cityLabels.forEach((label) => {
           const cityResult = comparisonResults.find((r) => r.label === label);
-          const eurPerUsdRate = cityResult?.eurPerUsdRate ?? FALLBACK_EUR_PER_USD;
           const childcareUsd = cityResult?.byCategory.get(CHILDCARE_CATEGORY_KEY) ?? 0;
           const baseTotalUsd = cityResult?.totalUsd ?? 0;
 

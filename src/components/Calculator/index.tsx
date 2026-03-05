@@ -31,6 +31,7 @@ import {
   Legend,
   Cell,
 } from 'recharts';
+import { getUsdRates, getUsdToCurrencyRate } from '../../api/exchangeRates';
 
 type ApiPriceItem = {
   category_name?: string;
@@ -45,6 +46,17 @@ type ApiPriceItem = {
   price?: number;
   value?: number;
   usd_price?: number;
+  usd?: {
+    min?: number | string;
+    max?: number | string;
+    avg?: number | string;
+    avg_price?: number | string;
+    average_price?: number | string;
+    price?: number | string;
+    value?: number | string;
+    [key: string]: unknown;
+  };
+  currency_code?: string;
   [key: string]: unknown;
 };
 
@@ -150,6 +162,18 @@ function DeleteIconSvg() {
 }
 
 function getPriceFromItem(p: ApiPriceItem): number {
+  if (p.usd && typeof p.usd === 'object') {
+    const usd = p.usd as Record<string, unknown>;
+    for (const key of PRICE_KEYS) {
+      const v = usd[key];
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+      if (typeof v === 'string') {
+        const n = parseFloat(v);
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+    }
+  }
+
   for (const key of PRICE_KEYS) {
     const v = p[key];
     if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
@@ -397,8 +421,8 @@ const Calculator: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [prices, setPrices] = useState<ApiPriceItem[]>([]);
-  const [apiExchangeRates, setApiExchangeRates] = useState<Record<string, number> | null>(null);
-    const [records, setRecords] = useState<CalculationRecord[]>(() =>
+  const [usdRates, setUsdRates] = useState<Record<string, number> | null>(null);
+  const [records, setRecords] = useState<CalculationRecord[]>(() =>
     typeof localStorage !== 'undefined'
       ? parseStoredRecords(localStorage.getItem(RECORDS_STORAGE_KEY))
       : [],
@@ -409,6 +433,20 @@ const Calculator: React.FC = () => {
       localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify(records));
     }
   }, [records]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUsdRates()
+      .then((rates) => {
+        if (!cancelled) setUsdRates(rates);
+      })
+      .catch(() => {
+        if (!cancelled) setUsdRates(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [sortKey, setSortKey] = useState<SortKey>('city');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -497,12 +535,19 @@ const Calculator: React.FC = () => {
     return { totalUsd: adjustedTotalUsd, byCategory: adjustedByCategory };
   }, [rawTotalUsd, rawByCategory, numberOfKids]);
 
-  const effectiveCurrencyPerUsd =
-    apiExchangeRates &&
-    typeof apiExchangeRates[incomeCurrency] === 'number' &&
-    apiExchangeRates[incomeCurrency] > 0
-      ? Number(apiExchangeRates[incomeCurrency])
-      : 1 / CURRENCIES[incomeCurrency].rateToUsd;
+  const getCurrencyPerUsd = useCallback(
+    (code: CurrencyCode): number =>
+      getUsdToCurrencyRate(
+        usdRates,
+        code,
+        1 / CURRENCIES[code].rateToUsd,
+      ),
+    [usdRates],
+  );
+
+  const effectiveCurrencyPerUsd = getCurrencyPerUsd(incomeCurrency);
+
+  const eurPerUsdForChart = getCurrencyPerUsd('EUR');
   const totalCostsInCurrency = totalCostsUsd * effectiveCurrencyPerUsd;
   const netBudget = useMemo(() => {
     const numericIncome = Number(income) || 0;
@@ -514,10 +559,10 @@ const Calculator: React.FC = () => {
     return Array.from(monthlyByCategory.entries())
       .map(([name, valueUsd]) => ({
         name,
-        value: valueUsd * effectiveCurrencyPerUsd,
+        value: valueUsd * eurPerUsdForChart,
       }))
       .filter(({ value }) => value > 0);
-  }, [monthlyByCategory, effectiveCurrencyPerUsd]);
+  }, [monthlyByCategory, eurPerUsdForChart]);
 
   const selectedRecord = useMemo(
     () => (selectedRecordId != null ? records.find((r) => r.id === selectedRecordId) ?? null : null),
@@ -527,16 +572,21 @@ const Calculator: React.FC = () => {
   const pieChartData = useMemo(() => {
     if (selectedRecord?.costBreakdown?.length) {
       const kids = selectedRecord.numberOfKids ?? 0;
-      return selectedRecord.costBreakdown.filter((item) => {
-        if (item.value <= 0) return false;
-        if (kids === 0 && item.name === 'Childcare') return false;
-        return true;
-      });
+      return selectedRecord.costBreakdown
+        .filter((item) => {
+          if (item.value <= 0) return false;
+          if (kids === 0 && item.name === 'Childcare') return false;
+          return true;
+        })
+        .map((item) => ({
+          ...item,
+          value: toDisplayCurrency(item.value, selectedRecord.currency),
+        }));
     }
     return chartData;
   }, [selectedRecord, chartData]);
 
-  const chartCurrency: CurrencyCode = selectedRecord ? selectedRecord.currency : incomeCurrency;
+  const chartCurrency: CurrencyCode = 'EUR';
 
   const filteredAndSortedRecords = useMemo(() => {
     const search = citySearch.trim().toLowerCase();
@@ -634,10 +684,6 @@ const Calculator: React.FC = () => {
         fetchedPrices = vals.flat().filter((x): x is ApiPriceItem => x != null && typeof x === 'object');
       }
 
-      if (data.exchange_rate && typeof data.exchange_rate === 'object') {
-        setApiExchangeRates(data.exchange_rate);
-      }
-
       setPrices(fetchedPrices);
 
       const { totalUsd: computedTotalCostsUsd, byCategory: computedByCategory } =
@@ -647,12 +693,7 @@ const Calculator: React.FC = () => {
       const adjustedTotalUsd =
         computedTotalCostsUsd - childcarePerChildUsd + childcarePerChildUsd * kids;
 
-      const currencyPerUsdRate =
-        data.exchange_rate &&
-        typeof data.exchange_rate[incomeCurrency] === 'number' &&
-        data.exchange_rate[incomeCurrency] > 0
-          ? data.exchange_rate[incomeCurrency]
-          : 1 / CURRENCIES[incomeCurrency].rateToUsd;
+      const currencyPerUsdRate = getCurrencyPerUsd(incomeCurrency);
 
       const totalCostsInRecordCurrency = adjustedTotalUsd * currencyPerUsdRate;
       const childcarePerChildInRecordCurrency = childcarePerChildUsd * currencyPerUsdRate;
@@ -703,7 +744,6 @@ const Calculator: React.FC = () => {
     setCountry('');
     setNumberOfKids(0);
     setPrices([]);
-    setApiExchangeRates(null);
     setError(null);
   };
 

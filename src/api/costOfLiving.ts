@@ -17,6 +17,17 @@ export type ApiPriceItem = {
   price?: number;
   value?: number;
   usd_price?: number;
+  usd?: {
+    min?: number | string;
+    max?: number | string;
+    avg?: number | string;
+    avg_price?: number | string;
+    average_price?: number | string;
+    price?: number | string;
+    value?: number | string;
+    [key: string]: unknown;
+  };
+  currency_code?: string;
   [key: string]: unknown;
 };
 
@@ -41,7 +52,20 @@ export type CityOption = {
 };
 
 function getPriceFromItem(p: ApiPriceItem): number {
+  if (p.usd && typeof p.usd === 'object') {
+    const usd = p.usd as Record<string, unknown>;
+    for (const key of PRICE_KEYS) {
+      const v = usd[key];
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+      if (typeof v === 'string') {
+        const n = parseFloat(v);
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+    }
+  }
+
   for (const key of PRICE_KEYS) {
+    // Fallback to local-currency fields if USD values are missing
     const v = p[key];
     if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
     if (typeof v === 'string') {
