@@ -5,11 +5,19 @@ import { Outlet } from "react-router-dom";
 
 const Container = styled.div`
     display: flex;
+    flex-direction: row;
     gap: 12px;
     height: calc(100vh - 20px);
     width: calc(100vw - 20px);
     margin: 10px 5px;
     box-sizing: border-box;
+
+    @media (max-width: 768px) {
+        flex-direction: column;
+        height: auto;
+        width: 100%;
+        margin: 0;
+    }
 `;
 
 const MainContent = styled.main`
@@ -20,6 +28,11 @@ const MainContent = styled.main`
     border-radius: 8px;
     padding: 24px;
     overflow: auto;
+
+    @media (max-width: 768px) {
+        padding: 16px;
+        margin-top: 8px;
+    }
 `;
 
 const Layout = () => {

@@ -15,6 +15,13 @@ const StyledSidebar = styled.div`
     border-radius: 8px;
     padding: 16px 12px;
     overflow: hidden;
+
+    @media (max-width: 768px) {
+      width: 100%;
+      min-width: 0;
+      height: auto;
+      max-height: none;
+    }
 `;
 
 const SidebarHeader = styled.div`
