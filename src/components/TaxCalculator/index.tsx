@@ -146,7 +146,7 @@ const TaxCalculator: React.FC = () => {
         Tax calculator
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: -0.5, mb: 0.5 }}>
-        Results are shown in local currency.
+        Results are shown in EUR.
       </Typography>
 
       <Card>

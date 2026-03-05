@@ -9,12 +9,8 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   IconButton,
-  InputLabel,
-  MenuItem,
   Paper,
-  Select,
   SvgIcon,
   Table,
   TableBody,
@@ -114,7 +110,7 @@ function parseStoredRecords(raw: string | null): CalculationRecord[] {
         numberOfKids,
         totalCosts: typeof rec.totalCosts === 'number' ? rec.totalCosts : 0,
         netBudget: typeof rec.netBudget === 'number' ? rec.netBudget : 0,
-        currency: (typeof rec.currency === 'string' && rec.currency in CURRENCIES ? rec.currency : 'USD') as keyof typeof CURRENCIES,
+        currency: (typeof rec.currency === 'string' && rec.currency in CURRENCIES ? rec.currency : 'EUR') as keyof typeof CURRENCIES,
         baseCostsInRecordCurrency: typeof rec.baseCostsInRecordCurrency === 'number' ? rec.baseCostsInRecordCurrency : undefined,
         childcarePerChildInRecordCurrency: typeof rec.childcarePerChildInRecordCurrency === 'number' ? rec.childcarePerChildInRecordCurrency : undefined,
         costBreakdown: Array.isArray(rec.costBreakdown)
@@ -324,15 +320,14 @@ const CURRENCIES = {
 
 type CurrencyCode = keyof typeof CURRENCIES;
 
-const DISPLAY_CURRENCY: CurrencyCode = 'USD';
+const DISPLAY_CURRENCY: CurrencyCode = 'EUR';
 
 function toDisplayCurrency(value: number, fromCurrency: CurrencyCode): number {
-  return value * CURRENCIES[fromCurrency].rateToUsd;
+  return (value * CURRENCIES[fromCurrency].rateToUsd) / CURRENCIES.EUR.rateToUsd;
 }
 
 const Calculator: React.FC = () => {
   const [income, setIncome] = useState<string>('');
-  const [incomeCurrency, setIncomeCurrency] = useState<CurrencyCode>('USD');
   const [city, setCity] = useState<string>('');
   const [country, setCountry] = useState<string>('');
   const [numberOfKids, setNumberOfKids] = useState<number>(0);
@@ -452,9 +447,9 @@ const Calculator: React.FC = () => {
   }, [rawTotalUsd, rawByCategory, numberOfKids]);
 
   const effectiveRateFromUsd =
-    apiExchangeRates && incomeCurrency in apiExchangeRates && Number(apiExchangeRates[incomeCurrency]) > 0
-      ? Number(apiExchangeRates[incomeCurrency])
-      : CURRENCIES[incomeCurrency].rateToUsd;
+    apiExchangeRates && 'EUR' in apiExchangeRates && Number(apiExchangeRates.EUR) > 0
+      ? Number(apiExchangeRates.EUR)
+      : CURRENCIES.EUR.rateToUsd;
   const totalCostsInCurrency = totalCostsUsd / effectiveRateFromUsd;
   const netBudget = useMemo(() => {
     const numericIncome = Number(income) || 0;
@@ -485,9 +480,9 @@ const Calculator: React.FC = () => {
     () =>
       pieChartData.map(({ name, value }) => ({
         name,
-        value: toDisplayCurrency(value, selectedRecord ? selectedRecord.currency : incomeCurrency),
+        value: toDisplayCurrency(value, selectedRecord ? selectedRecord.currency : 'EUR'),
       })),
-    [pieChartData, selectedRecord, incomeCurrency],
+    [pieChartData, selectedRecord],
   );
 
   const filteredAndSortedRecords = useMemo(() => {
@@ -598,9 +593,9 @@ const Calculator: React.FC = () => {
       const kids = Math.max(0, numberOfKids);
       const adjustedTotalUsd = computedTotalCostsUsd - childcarePerChild + childcarePerChild * kids;
       const recordRate =
-        data.exchange_rate && incomeCurrency in data.exchange_rate && Number((data.exchange_rate as Record<string, number>)[incomeCurrency]) > 0
-          ? Number((data.exchange_rate as Record<string, number>)[incomeCurrency])
-          : CURRENCIES[incomeCurrency].rateToUsd;
+        data.exchange_rate && 'EUR' in data.exchange_rate && Number((data.exchange_rate as Record<string, number>).EUR) > 0
+          ? Number((data.exchange_rate as Record<string, number>).EUR)
+          : CURRENCIES.EUR.rateToUsd;
       const totalCostsInRecordCurrency = adjustedTotalUsd / recordRate;
       const childcarePerChildInRecordCurrency = (childcarePerChild / recordRate);
       const baseCostsInRecordCurrency = totalCostsInRecordCurrency - kids * childcarePerChildInRecordCurrency;
@@ -623,7 +618,7 @@ const Calculator: React.FC = () => {
         numberOfKids: kids,
         totalCosts: totalCostsInRecordCurrency,
         netBudget: numericIncome - totalCostsInRecordCurrency,
-        currency: incomeCurrency,
+        currency: 'EUR',
         baseCostsInRecordCurrency,
         childcarePerChildInRecordCurrency,
         costBreakdown,
@@ -643,7 +638,6 @@ const Calculator: React.FC = () => {
 
   const handleReset = () => {
     setIncome('');
-    setIncomeCurrency('USD');
     setCity('');
     setCountry('');
     setNumberOfKids(0);
@@ -718,7 +712,7 @@ const Calculator: React.FC = () => {
         Cost of Living Calculator
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: -1, mb: 1 }}>
-        Results are shown in local currency.
+        Results are shown in EUR.
       </Typography>
 
       <Card>
@@ -730,12 +724,12 @@ const Calculator: React.FC = () => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: 'repeat(5, minmax(0, 1fr))' },
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(4, minmax(0, 1fr))' },
                 gap: 2,
               }}
             >
               <TextField
-                label="Monthly Income"
+                label="Monthly Income (EUR)"
                 type="number"
                 fullWidth
                 required
@@ -743,21 +737,6 @@ const Calculator: React.FC = () => {
                 onChange={(e) => setIncome(e.target.value)}
                 inputProps={{ min: 0, step: 100 }}
               />
-              <FormControl fullWidth required>
-                <InputLabel id="income-currency-label">Currency</InputLabel>
-                <Select
-                  labelId="income-currency-label"
-                  value={incomeCurrency}
-                  label="Currency"
-                  onChange={(e) => setIncomeCurrency(e.target.value as CurrencyCode)}
-                >
-                  {(Object.keys(CURRENCIES) as CurrencyCode[]).map((code) => (
-                    <MenuItem key={code} value={code}>
-                      {CURRENCIES[code].symbol} – {CURRENCIES[code].name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
               <Autocomplete
                 freeSolo
                 fullWidth
@@ -854,13 +833,13 @@ const Calculator: React.FC = () => {
               </Box>
               <Box textAlign={{ xs: 'left', sm: 'right' }}>
                 <Typography variant="subtitle1">
-                  Total costs: {toDisplayCurrency(totalCostsInCurrency, incomeCurrency).toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
+                  Total costs: {toDisplayCurrency(totalCostsInCurrency, 'EUR').toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
                 </Typography>
                 <Typography
                   variant="subtitle1"
                   color={netBudget >= 0 ? 'success.main' : 'error.main'}
                 >
-                  Net budget: {toDisplayCurrency(netBudget, incomeCurrency).toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
+                  Net budget: {toDisplayCurrency(netBudget, 'EUR').toFixed(2)} {CURRENCIES[DISPLAY_CURRENCY].symbol}
                 </Typography>
               </Box>
             </Box>
@@ -983,7 +962,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'income' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('income')}
                     >
-                      Income (USD)
+                      Income (EUR)
                     </TableSortLabel>
                   </TableCell>
                   <TableCell
@@ -995,7 +974,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'totalCosts' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('totalCosts')}
                     >
-                      Total costs (USD)
+                      Total costs (EUR)
                     </TableSortLabel>
                   </TableCell>
                   <TableCell
@@ -1007,7 +986,7 @@ const Calculator: React.FC = () => {
                       direction={sortKey === 'netBudget' ? sortDirection : 'asc'}
                       onClick={() => handleRequestSort('netBudget')}
                     >
-                      Net budget (USD)
+                      Net budget (EUR)
                     </TableSortLabel>
                   </TableCell>
                   <TableCell align="center" sx={{ width: 100 }}>
