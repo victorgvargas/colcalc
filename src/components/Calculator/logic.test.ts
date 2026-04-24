@@ -8,7 +8,7 @@ import {
   readShareStateFromSearch,
   toDisplayCurrency,
   type CalculationRecord,
-} from './index';
+} from './logic';
 
 function item(partial: Partial<ApiPriceItem>): ApiPriceItem {
   return { ...partial };

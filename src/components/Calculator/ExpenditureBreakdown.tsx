@@ -1,0 +1,92 @@
+import React from 'react';
+import { Box, Card, CardContent, Typography } from '@mui/material';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Tooltip,
+  Legend,
+  Cell,
+} from 'recharts';
+import { CURRENCIES, type CalculationRecord } from './logic';
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AA46BE', '#FF6F91'];
+
+export type BreakdownDatum = { name: string; value: number };
+
+type Props = {
+  data: BreakdownDatum[];
+  /** When a saved record is selected, show its city/country alongside the heading. */
+  selectedRecord?: CalculationRecord | null;
+  /** Currency to render inside tooltip (the data values are already converted). */
+  displayCurrency?: keyof typeof CURRENCIES;
+};
+
+const ExpenditureBreakdown: React.FC<Props> = ({
+  data,
+  selectedRecord = null,
+  displayCurrency = 'EUR',
+}) => {
+  return (
+    <Card sx={{ height: '100%' }}>
+      <CardContent sx={{ height: 360 }}>
+        <Typography variant="h6" gutterBottom>
+          Expenditure breakdown
+          {selectedRecord && (
+            <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+              — {selectedRecord.city}, {selectedRecord.country}
+            </Typography>
+          )}
+        </Typography>
+        {data.length ? (
+          <Box sx={{ height: '85%', minHeight: 0, overflow: 'hidden' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                <Pie
+                  data={data}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius="75%"
+                  isAnimationActive
+                >
+                  {data.map((_, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value: number, name: string) => [
+                    `${Number(value).toFixed(2)} ${CURRENCIES[displayCurrency].symbol}`,
+                    name,
+                  ]}
+                  contentStyle={{ maxWidth: '100%' }}
+                  wrapperStyle={{ outline: 'none' }}
+                />
+                <Legend
+                  wrapperStyle={{ overflow: 'hidden' }}
+                  formatter={(value: string) => (
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span>
+                  )}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </Box>
+        ) : selectedRecord ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            No breakdown stored for this record.
+          </Typography>
+        ) : (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Run a calculation to see the cost breakdown pie chart.
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+export default ExpenditureBreakdown;
