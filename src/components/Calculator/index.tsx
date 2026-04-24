@@ -428,6 +428,15 @@ const Calculator: React.FC = () => {
   }, [records]);
 
   useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key !== RECORDS_STORAGE_KEY) return;
+      setRecords(parseStoredRecords(localStorage.getItem(RECORDS_STORAGE_KEY)));
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     getUsdRates()
       .then((rates) => {

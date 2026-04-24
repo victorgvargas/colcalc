@@ -1,6 +1,7 @@
 import styled from "styled-components";
 import Sidebar from "../Sidebar";
 import SEO from "../SEO";
+import Assistant from "../Assistant";
 import { Outlet } from "react-router-dom";
 
 const Container = styled.div`
@@ -70,6 +71,7 @@ const Layout = () => {
             <MainContent>
                 <Outlet />
             </MainContent>
+            <Assistant />
         </Container>
     );
 };
