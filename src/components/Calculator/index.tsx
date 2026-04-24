@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
   Box,
@@ -357,17 +358,47 @@ const CURRENCIES = {
 
 type CurrencyCode = keyof typeof CURRENCIES;
 
+type PrefillState = {
+  income?: number;
+  currency?: string;
+  city?: string;
+  country?: string;
+};
+
 function toDisplayCurrency(value: number, fromCurrency: CurrencyCode): number {
   return (value * CURRENCIES[fromCurrency].rateToUsd) / CURRENCIES.EUR.rateToUsd;
 }
 
 const Calculator: React.FC = () => {
-  const [income, setIncome] = useState<string>('');
-  const [incomeCurrency, setIncomeCurrency] = useState<CurrencyCode>('EUR');
-  const [city, setCity] = useState<string>('');
-  const [country, setCountry] = useState<string>('');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const prefillConsumedRef = useRef(false);
+
+  const initialPrefill =
+    (location.state && typeof location.state === 'object'
+      ? (location.state as PrefillState)
+      : null) ?? null;
+  const initialCurrency: CurrencyCode =
+    initialPrefill?.currency && initialPrefill.currency in CURRENCIES
+      ? (initialPrefill.currency as CurrencyCode)
+      : 'EUR';
+
+  const [income, setIncome] = useState<string>(
+    initialPrefill?.income != null ? String(initialPrefill.income) : '',
+  );
+  const [incomeCurrency, setIncomeCurrency] = useState<CurrencyCode>(initialCurrency);
+  const [city, setCity] = useState<string>(initialPrefill?.city ?? '');
+  const [country, setCountry] = useState<string>(initialPrefill?.country ?? '');
   const [numberOfKids, setNumberOfKids] = useState<number>(0);
   const [rentLocation, setRentLocation] = useState<RentLocation>('center');
+
+  useEffect(() => {
+    // Consume the router state once so refreshing the page doesn't re-prefill.
+    if (!prefillConsumedRef.current && initialPrefill) {
+      prefillConsumedRef.current = true;
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [initialPrefill, location.pathname, navigate]);
 
   const [allCities, setAllCities] = useState<CityOption[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
