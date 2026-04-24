@@ -67,9 +67,9 @@ type CityOption = {
   cityId?: number;
 };
 
-type RentLocation = 'center' | 'outskirts';
+export type RentLocation = 'center' | 'outskirts';
 
-type CalculationRecord = {
+export type CalculationRecord = {
   id: number;
   city: string;
   country: string;
@@ -89,7 +89,7 @@ type CalculationRecord = {
 
 const RECORDS_STORAGE_KEY = 'colcalc_records';
 
-function parseStoredRecords(raw: string | null): CalculationRecord[] {
+export function parseStoredRecords(raw: string | null): CalculationRecord[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -248,7 +248,7 @@ function looksLikeMonthlyItem(p: ApiPriceItem): boolean {
   return true;
 }
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -262,7 +262,7 @@ function median(values: number[]): number {
  * Rent: average of rent items. Transport/Childcare: median of items in plausible monthly range (avoids car price, annual, per-trip).
  * Utilities, Internet, Mobile: sum.
  */
-function computeMonthlyCostsFromPrices(
+export function computeMonthlyCostsFromPrices(
   priceItems: ApiPriceItem[],
   rentLocation: RentLocation = 'center',
 ): { totalUsd: number; byCategory: Map<string, number> } {
@@ -362,7 +362,7 @@ function computeMonthlyCostsFromPrices(
   return { totalUsd, byCategory };
 }
 
-const CURRENCIES = {
+export const CURRENCIES = {
   USD: { name: 'US Dollar', symbol: 'USD', rateToUsd: 1 },
   EUR: { name: 'Euro', symbol: 'EUR', rateToUsd: 1.08 },
   GBP: { name: 'British Pound', symbol: 'GBP', rateToUsd: 1.27 },
@@ -394,7 +394,7 @@ const SHARE_PARAM_KEYS = [
   'tax',
 ] as const;
 
-function readShareStateFromSearch(search: string): PrefillState | null {
+export function readShareStateFromSearch(search: string): PrefillState | null {
   if (!search) return null;
   const params = new URLSearchParams(search);
   const hasAny = SHARE_PARAM_KEYS.some((k) => params.has(k));
@@ -425,7 +425,7 @@ function readShareStateFromSearch(search: string): PrefillState | null {
   return state;
 }
 
-function toDisplayCurrency(value: number, fromCurrency: CurrencyCode): number {
+export function toDisplayCurrency(value: number, fromCurrency: CurrencyCode): number {
   return (value * CURRENCIES[fromCurrency].rateToUsd) / CURRENCIES.EUR.rateToUsd;
 }
 

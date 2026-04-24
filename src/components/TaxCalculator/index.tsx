@@ -41,7 +41,7 @@ export type CalculatorHandoff = {
  * When rel.tax returns a currency the calculator doesn't support, convert to EUR
  * via the USD-denominated rate table.
  */
-function buildCalculatorHandoff(input: {
+export function buildCalculatorHandoff(input: {
   monthlyNet: number;
   resultCurrency: string;
   usdRates: Record<string, number> | null;
