@@ -6,12 +6,15 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   Paper,
+  Snackbar,
   SvgIcon,
   Table,
   TableBody,
@@ -38,6 +41,12 @@ import {
   fetchPricesForCity,
   type ApiPriceItem,
 } from '../../api/costOfLiving';
+import {
+  countryNameToCode,
+  fetchIncomeTax,
+  fetchTaxCountries,
+  type RelTaxCountry,
+} from '../../api/taxRates';
 import TopCitiesDirectory from '../TopCitiesDirectory';
 
 const PRICE_KEYS = [
@@ -74,6 +83,8 @@ type CalculationRecord = {
   childcarePerChildInRecordCurrency?: number;
   /** Per-category costs in record currency for pie chart */
   costBreakdown?: { name: string; value: number }[];
+  /** Effective income-tax rate applied to `income` (0..1). Undefined = untaxed. */
+  taxRate?: number;
 };
 
 const RECORDS_STORAGE_KEY = 'colcalc_records';
@@ -103,6 +114,10 @@ function parseStoredRecords(raw: string | null): CalculationRecord[] {
               (x) => x && typeof x.name === 'string' && typeof x.value === 'number',
             )
           : undefined,
+        taxRate:
+          typeof rec.taxRate === 'number' && Number.isFinite(rec.taxRate)
+            ? Math.max(0, Math.min(1, rec.taxRate))
+            : undefined,
       };
     }).filter((r) => r.city && r.country);
   } catch {
@@ -364,7 +379,51 @@ type PrefillState = {
   currency?: string;
   city?: string;
   country?: string;
+  numberOfKids?: number;
+  rentLocation?: RentLocation;
+  applyTax?: boolean;
 };
+
+const SHARE_PARAM_KEYS = [
+  'income',
+  'currency',
+  'city',
+  'country',
+  'kids',
+  'rent',
+  'tax',
+] as const;
+
+function readShareStateFromSearch(search: string): PrefillState | null {
+  if (!search) return null;
+  const params = new URLSearchParams(search);
+  const hasAny = SHARE_PARAM_KEYS.some((k) => params.has(k));
+  if (!hasAny) return null;
+
+  const state: PrefillState = {};
+  const income = params.get('income');
+  if (income != null) {
+    const n = Number(income);
+    if (Number.isFinite(n) && n >= 0) state.income = n;
+  }
+  const currency = params.get('currency');
+  if (currency && currency in CURRENCIES) state.currency = currency;
+  const city = params.get('city');
+  if (city) state.city = city;
+  const country = params.get('country');
+  if (country) state.country = country;
+  const kids = params.get('kids');
+  if (kids != null) {
+    const n = parseInt(kids, 10);
+    if (Number.isFinite(n) && n >= 0) state.numberOfKids = n;
+  }
+  const rent = params.get('rent');
+  if (rent === 'center' || rent === 'outskirts') state.rentLocation = rent;
+  const tax = params.get('tax');
+  if (tax === '1' || tax === 'true') state.applyTax = true;
+
+  return state;
+}
 
 function toDisplayCurrency(value: number, fromCurrency: CurrencyCode): number {
   return (value * CURRENCIES[fromCurrency].rateToUsd) / CURRENCIES.EUR.rateToUsd;
@@ -375,10 +434,13 @@ const Calculator: React.FC = () => {
   const navigate = useNavigate();
   const prefillConsumedRef = useRef(false);
 
-  const initialPrefill =
-    (location.state && typeof location.state === 'object'
+  const routerPrefill =
+    location.state && typeof location.state === 'object'
       ? (location.state as PrefillState)
-      : null) ?? null;
+      : null;
+  const urlPrefill = readShareStateFromSearch(location.search);
+  const initialPrefill = routerPrefill ?? urlPrefill ?? null;
+
   const initialCurrency: CurrencyCode =
     initialPrefill?.currency && initialPrefill.currency in CURRENCIES
       ? (initialPrefill.currency as CurrencyCode)
@@ -390,16 +452,22 @@ const Calculator: React.FC = () => {
   const [incomeCurrency, setIncomeCurrency] = useState<CurrencyCode>(initialCurrency);
   const [city, setCity] = useState<string>(initialPrefill?.city ?? '');
   const [country, setCountry] = useState<string>(initialPrefill?.country ?? '');
-  const [numberOfKids, setNumberOfKids] = useState<number>(0);
-  const [rentLocation, setRentLocation] = useState<RentLocation>('center');
+  const [numberOfKids, setNumberOfKids] = useState<number>(initialPrefill?.numberOfKids ?? 0);
+  const [rentLocation, setRentLocation] = useState<RentLocation>(
+    initialPrefill?.rentLocation ?? 'center',
+  );
+  const [applyTax, setApplyTax] = useState<boolean>(initialPrefill?.applyTax ?? false);
+  const shouldAutoRunRef = useRef<boolean>(
+    Boolean(urlPrefill && urlPrefill.income && urlPrefill.city),
+  );
 
   useEffect(() => {
-    // Consume the router state once so refreshing the page doesn't re-prefill.
-    if (!prefillConsumedRef.current && initialPrefill) {
+    // Consume the router state / URL params once so refreshing doesn't re-prefill.
+    if (!prefillConsumedRef.current && (routerPrefill || urlPrefill)) {
       prefillConsumedRef.current = true;
       navigate(location.pathname, { replace: true, state: null });
     }
-  }, [initialPrefill, location.pathname, navigate]);
+  }, [routerPrefill, urlPrefill, location.pathname, navigate]);
 
   const [allCities, setAllCities] = useState<CityOption[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
@@ -450,6 +518,28 @@ const Calculator: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  const [taxCountries, setTaxCountries] = useState<RelTaxCountry[]>([]);
+  const [taxEffectiveRate, setTaxEffectiveRate] = useState<number | null>(null);
+  const [taxLoading, setTaxLoading] = useState(false);
+  const [taxError, setTaxError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!applyTax || taxCountries.length > 0) return;
+    let cancelled = false;
+    fetchTaxCountries()
+      .then((list) => {
+        if (!cancelled) setTaxCountries(list);
+      })
+      .catch(() => {
+        if (!cancelled) setTaxCountries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyTax, taxCountries.length]);
+
+  const [shareSnackOpen, setShareSnackOpen] = useState(false);
 
   const [sortKey, setSortKey] = useState<SortKey>('city');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -522,10 +612,18 @@ const Calculator: React.FC = () => {
 
   const eurPerUsdForChart = getCurrencyPerUsd('EUR');
   const totalCostsInCurrency = totalCostsUsd * effectiveCurrencyPerUsd;
-  const netBudget = useMemo(() => {
-    const numericIncome = Number(income) || 0;
-    return numericIncome - totalCostsInCurrency;
-  }, [income, totalCostsInCurrency]);
+
+  const grossIncomeValue = Number(income) || 0;
+  const netIncomeAfterTax = useMemo(() => {
+    if (!applyTax || taxEffectiveRate == null) return grossIncomeValue;
+    const rate = Math.max(0, Math.min(1, taxEffectiveRate));
+    return grossIncomeValue * (1 - rate);
+  }, [applyTax, grossIncomeValue, taxEffectiveRate]);
+
+  const netBudget = useMemo(
+    () => netIncomeAfterTax - totalCostsInCurrency,
+    [netIncomeAfterTax, totalCostsInCurrency],
+  );
 
   const chartData = useMemo(() => {
     if (!monthlyByCategory.size) return [];
@@ -561,6 +659,12 @@ const Calculator: React.FC = () => {
 
   const chartCurrency: CurrencyCode = 'EUR';
 
+  const getRecordIncomeDisplay = useCallback(
+    (r: CalculationRecord): number =>
+      typeof r.taxRate === 'number' ? r.income * (1 - r.taxRate) : r.income,
+    [],
+  );
+
   const filteredAndSortedRecords = useMemo(() => {
     const search = citySearch.trim().toLowerCase();
 
@@ -570,14 +674,16 @@ const Calculator: React.FC = () => {
     }
 
     const sorted = [...data].sort((a, b) => {
+      const rawAVal = sortKey === 'income' ? getRecordIncomeDisplay(a) : a[sortKey];
+      const rawBVal = sortKey === 'income' ? getRecordIncomeDisplay(b) : b[sortKey];
       const aVal =
         sortKey === 'city'
-          ? a[sortKey]
-          : toDisplayCurrency(a[sortKey] as number, a.currency);
+          ? rawAVal
+          : toDisplayCurrency(rawAVal as number, a.currency);
       const bVal =
         sortKey === 'city'
-          ? b[sortKey]
-          : toDisplayCurrency(b[sortKey] as number, b.currency);
+          ? rawBVal
+          : toDisplayCurrency(rawBVal as number, b.currency);
 
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         const cmp = aVal.localeCompare(bVal);
@@ -593,7 +699,7 @@ const Calculator: React.FC = () => {
     });
 
     return sorted;
-  }, [records, citySearch, sortKey, sortDirection]);
+  }, [records, citySearch, sortKey, sortDirection, getRecordIncomeDisplay]);
 
   const paginatedRecords = useMemo(() => {
     const start = page * rowsPerPage;
@@ -632,6 +738,48 @@ const Calculator: React.FC = () => {
     setIsLoading(true);
 
     try {
+      let resolvedTaxRate: number | null = null;
+      if (applyTax) {
+        setTaxError(null);
+        setTaxLoading(true);
+        try {
+          const countries =
+            taxCountries.length > 0 ? taxCountries : await fetchTaxCountries();
+          if (taxCountries.length === 0) setTaxCountries(countries);
+          const code = countryNameToCode(country.trim(), countries);
+          if (!code) {
+            setTaxError(
+              `rel.tax doesn't cover ${country.trim()}; net budget will use gross income.`,
+            );
+          } else {
+            // rel.tax expects annual income in local currency. The calculator currency
+            // may differ from the country's local currency, but the *effective rate*
+            // is what we need — it's roughly invariant to the currency nominal value
+            // at a given bracket, so we pass annualized income in the user's currency.
+            const annualIncome = numericIncome * 12;
+            const calc = await fetchIncomeTax(code, annualIncome);
+            const rate = calc.rates?.effectiveTaxRate;
+            if (typeof rate === 'number' && Number.isFinite(rate) && rate >= 0) {
+              resolvedTaxRate = Math.max(0, Math.min(1, rate));
+              setTaxEffectiveRate(resolvedTaxRate);
+            } else {
+              setTaxError('Tax API did not return an effective rate.');
+            }
+          }
+        } catch (taxErr) {
+          setTaxError(
+            taxErr instanceof Error
+              ? `Tax lookup failed: ${taxErr.message}`
+              : 'Tax lookup failed.',
+          );
+        } finally {
+          setTaxLoading(false);
+        }
+      } else {
+        setTaxEffectiveRate(null);
+        setTaxError(null);
+      }
+
       const { prices: fetchedPrices } = await fetchPricesForCity(
         city.trim(),
         country.trim(),
@@ -664,6 +812,11 @@ const Calculator: React.FC = () => {
         };
       });
 
+      const effectiveNetIncome =
+        resolvedTaxRate != null
+          ? numericIncome * (1 - resolvedTaxRate)
+          : numericIncome;
+
       const record: CalculationRecord = {
         id: Date.now(),
         city: city.trim(),
@@ -671,11 +824,12 @@ const Calculator: React.FC = () => {
         income: numericIncome,
         numberOfKids: kids,
         totalCosts: totalCostsInRecordCurrency,
-        netBudget: numericIncome - totalCostsInRecordCurrency,
+        netBudget: effectiveNetIncome - totalCostsInRecordCurrency,
         currency: incomeCurrency,
         baseCostsInRecordCurrency,
         childcarePerChildInRecordCurrency,
         costBreakdown,
+        taxRate: resolvedTaxRate ?? undefined,
       };
 
       setRecords((prev) => [record, ...prev]);
@@ -690,6 +844,50 @@ const Calculator: React.FC = () => {
     }
   };
 
+  const buildShareUrl = useCallback((): string | null => {
+    const numericIncome = Number(income);
+    if (!numericIncome || !city.trim()) return null;
+    const params = new URLSearchParams();
+    params.set('income', String(numericIncome));
+    params.set('currency', incomeCurrency);
+    params.set('city', city.trim());
+    if (country.trim()) params.set('country', country.trim());
+    if (numberOfKids > 0) params.set('kids', String(numberOfKids));
+    if (rentLocation !== 'center') params.set('rent', rentLocation);
+    if (applyTax) params.set('tax', '1');
+    const base =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}${location.pathname}`
+        : location.pathname;
+    return `${base}?${params.toString()}`;
+  }, [income, incomeCurrency, city, country, numberOfKids, rentLocation, applyTax, location.pathname]);
+
+  const handleShare = useCallback(async () => {
+    const url = buildShareUrl();
+    if (!url) {
+      setError('Enter income and city before sharing.');
+      return;
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      }
+      setShareSnackOpen(true);
+    } catch {
+      setShareSnackOpen(true);
+    }
+  }, [buildShareUrl]);
+
+  // Auto-run the calculation when the user lands via a share link.
+  useEffect(() => {
+    if (!shouldAutoRunRef.current) return;
+    if (!income || !city.trim() || !country.trim()) return;
+    shouldAutoRunRef.current = false;
+    // Synthesize a form event so handleSubmit's path runs unchanged.
+    void handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [income, city, country]);
+
   const handleReset = () => {
     setIncome('');
     setIncomeCurrency('EUR');
@@ -698,6 +896,9 @@ const Calculator: React.FC = () => {
     setNumberOfKids(0);
     setPrices([]);
     setError(null);
+    setApplyTax(false);
+    setTaxEffectiveRate(null);
+    setTaxError(null);
   };
 
   const handleDeleteRecord = useCallback((id: number) => {
@@ -729,7 +930,9 @@ const Calculator: React.FC = () => {
         const newTotalCosts = hasChildcareData
           ? r.baseCostsInRecordCurrency! + newKids * r.childcarePerChildInRecordCurrency!
           : r.totalCosts;
-        const newNetBudget = newIncome - newTotalCosts;
+        const effectiveIncome =
+          typeof r.taxRate === 'number' ? newIncome * (1 - r.taxRate) : newIncome;
+        const newNetBudget = effectiveIncome - newTotalCosts;
         const costBreakdown =
           r.costBreakdown?.length && typeof r.childcarePerChildInRecordCurrency === 'number'
             ? r.costBreakdown.map((item) =>
@@ -878,6 +1081,24 @@ const Calculator: React.FC = () => {
                 <MenuItem value="outskirts">Outside centre</MenuItem>
               </TextField>
             </Box>
+            <Box sx={{ mt: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={applyTax}
+                    onChange={(e) => setApplyTax(e.target.checked)}
+                  />
+                }
+                label="Apply estimated income tax (rel.tax)"
+              />
+              {applyTax && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                  Treats your income as gross. We fetch an effective tax rate for the
+                  selected country and subtract it from income before computing net budget.
+                  US figures assume self-employment.
+                </Typography>
+              )}
+            </Box>
             <Box
               sx={{
                 display: 'flex',
@@ -888,13 +1109,13 @@ const Calculator: React.FC = () => {
                 gap: 2,
               }}
             >
-              <Box sx={{ display: 'flex', gap: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <Button
                   type="submit"
                   variant="contained"
-                  disabled={isLoading}
+                  disabled={isLoading || taxLoading}
                 >
-                  {isLoading ? 'Calculating…' : 'Calculate'}
+                  {isLoading || taxLoading ? 'Calculating…' : 'Calculate'}
                 </Button>
                 <Button
                   type="button"
@@ -904,11 +1125,25 @@ const Calculator: React.FC = () => {
                 >
                   Reset
                 </Button>
+                <Button
+                  type="button"
+                  variant="text"
+                  onClick={handleShare}
+                  disabled={!Number(income) || !city.trim()}
+                >
+                  Copy shareable link
+                </Button>
               </Box>
               <Box textAlign={{ xs: 'left', sm: 'right' }}>
                 <Typography variant="subtitle1">
                   Total costs: {totalCostsInCurrency.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
                 </Typography>
+                {applyTax && taxEffectiveRate != null && (
+                  <Typography variant="body2" color="text.secondary">
+                    Net income (after {(taxEffectiveRate * 100).toFixed(1)}% tax):{' '}
+                    {netIncomeAfterTax.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
+                  </Typography>
+                )}
                 <Typography
                   variant="subtitle1"
                   color={netBudget >= 0 ? 'success.main' : 'error.main'}
@@ -917,6 +1152,11 @@ const Calculator: React.FC = () => {
                 </Typography>
               </Box>
             </Box>
+            {taxError && (
+              <Typography color="warning.main" sx={{ mt: 2 }}>
+                {taxError}
+              </Typography>
+            )}
             {error && (
               <Typography color="error" sx={{ mt: 2 }}>
                 {error}
@@ -1080,7 +1320,18 @@ const Calculator: React.FC = () => {
                     <TableCell>{record.city}</TableCell>
                     <TableCell>{record.country}</TableCell>
                     <TableCell align="right">
-                      {record.income.toFixed(2)} {CURRENCIES[record.currency].symbol}
+                      {getRecordIncomeDisplay(record).toFixed(2)}{' '}
+                      {CURRENCIES[record.currency].symbol}
+                      {typeof record.taxRate === 'number' && (
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block' }}
+                        >
+                          net of {(record.taxRate * 100).toFixed(1)}% tax
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell align="right">
                       {record.totalCosts.toFixed(2)} {CURRENCIES[record.currency].symbol}
@@ -1144,12 +1395,21 @@ const Calculator: React.FC = () => {
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
-              label="Income"
+              label={
+                typeof editModalRecord?.taxRate === 'number'
+                  ? 'Gross income'
+                  : 'Income'
+              }
               type="number"
               fullWidth
               value={editIncome}
               onChange={(e) => setEditIncome(e.target.value)}
               inputProps={{ min: 0, step: 100 }}
+              helperText={
+                typeof editModalRecord?.taxRate === 'number'
+                  ? `Net budget applies ${(editModalRecord.taxRate * 100).toFixed(1)}% tax`
+                  : undefined
+              }
             />
             <TextField
               label="Number of kids"
@@ -1171,6 +1431,14 @@ const Calculator: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={shareSnackOpen}
+        autoHideDuration={2500}
+        onClose={() => setShareSnackOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message="Shareable link copied to clipboard"
+      />
     </Box>
   );
 };
