@@ -7,7 +7,7 @@ import { citySlug } from '../lib/slug';
 const BASE_URL =
   typeof import.meta.env.VITE_SITE_URL === 'string' && import.meta.env.VITE_SITE_URL
     ? import.meta.env.VITE_SITE_URL.replace(/\/$/, '')
-    : 'https://colcalc.fly.dev';
+    : 'https://colcalc.vercel.app';
 
 const OG_IMAGE = `${BASE_URL}/og-image.png`;
 

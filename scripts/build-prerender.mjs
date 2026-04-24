@@ -21,7 +21,7 @@ const DATASET = resolve(ROOT, 'public', 'cost-of-living.json');
 const TOP_CITIES = resolve(ROOT, 'src', 'data', 'topCities.json');
 const INDEX_HTML = join(DIST, 'index.html');
 
-const SITE_URL = (process.env.VITE_SITE_URL || 'https://colcalc.fly.dev').replace(/\/$/, '');
+const SITE_URL = (process.env.VITE_SITE_URL || 'https://colcalc.vercel.app').replace(/\/$/, '');
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
 
 function slugify(value) {

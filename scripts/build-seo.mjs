@@ -19,7 +19,7 @@ const DATASET = resolve(ROOT, 'public', 'cost-of-living.json');
 const SITEMAP = resolve(ROOT, 'public', 'sitemap.xml');
 const TOP_CITIES_OUT = resolve(ROOT, 'src', 'data', 'topCities.json');
 
-const SITE_URL = (process.env.VITE_SITE_URL || 'https://colcalc.fly.dev').replace(/\/$/, '');
+const SITE_URL = (process.env.VITE_SITE_URL || 'https://colcalc.vercel.app').replace(/\/$/, '');
 
 /**
  * Curated list of high-search-volume cities. Ranking these above the

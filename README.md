@@ -87,7 +87,7 @@ Subsequent deploys: run `fly deploy` from the project root. The app will be avai
 The app is set up for search engines:
 
 - **Meta tags**: Default and per-route title, description, Open Graph, and Twitter Card tags (via `react-helmet-async`).
-- **Canonical URLs**: Each route sets a canonical URL. Set `VITE_SITE_URL` (e.g. `https://colcalc.fly.dev`) when building for production so canonicals and sitemap references match your domain.
+- **Canonical URLs**: Each route sets a canonical URL. Set `VITE_SITE_URL` (e.g. `https://colcalc.vercel.app`) when building for production so canonicals and sitemap references match your domain.
 - **Sitemap & robots**: `public/sitemap.xml` and `public/robots.txt` are included. Update the domain in both files if you deploy to a different URL.
 - **Structured data**: JSON-LD `WebApplication` schema in `index.html` for rich results.
 - **Semantic headings**: One `<h1>` per page in the main content.
