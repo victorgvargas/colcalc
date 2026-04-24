@@ -926,8 +926,6 @@ const Calculator: React.FC = () => {
         </CardContent>
       </Card>
 
-      <TopCitiesDirectory />
-
       <Box
         sx={{
           display: 'flex',
@@ -1138,6 +1136,8 @@ const Calculator: React.FC = () => {
           </Paper>
         </Box>
       </Box>
+
+      <TopCitiesDirectory />
 
       <Dialog open={editModalRecord !== null} onClose={handleEditModalClose} maxWidth="sm" fullWidth>
         <DialogTitle>Edit record</DialogTitle>
