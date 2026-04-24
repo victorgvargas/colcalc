@@ -1,8 +1,4 @@
-export const API_BASE = 'https://cost-of-living-and-prices.p.rapidapi.com';
-export const API_HEADERS = {
-  'x-rapidapi-key': 'bf8010588dmsh35bf3ec00a6a414p1d2bb4jsn76cf746787c2',
-  'x-rapidapi-host': 'cost-of-living-and-prices.p.rapidapi.com',
-} as const;
+const DATASET_URL = '/cost-of-living.json';
 
 export type ApiPriceItem = {
   category_name?: string;
@@ -35,20 +31,22 @@ const PRICE_KEYS = [
   'avg', 'avg_price', 'average_price', 'price', 'value', 'usd_price', 'amount', 'min', 'max',
 ] as const;
 
-export type ApiPricesResponse = {
-  city_id?: number;
-  city_name?: string;
-  country_name?: string;
-  exchange_rate?: Record<string, number>;
-  prices?: ApiPriceItem[];
-  error?: string | null;
-  [key: string]: unknown;
-};
-
 export type CityOption = {
   cityName: string;
   countryName: string;
-  cityId?: number;
+};
+
+type DatasetEntry = {
+  city: string;
+  country: string;
+  prices: { category: string; item: string; usd: number }[];
+};
+
+type Dataset = {
+  source?: string;
+  generatedAt?: string;
+  cityCount?: number;
+  cities: DatasetEntry[];
 };
 
 function getPriceFromItem(p: ApiPriceItem): number {
@@ -220,32 +218,29 @@ export function computeMonthlyCostsFromPrices(
   return { totalUsd, byCategory };
 }
 
+let datasetPromise: Promise<Dataset> | null = null;
+
+function loadDataset(): Promise<Dataset> {
+  if (datasetPromise) return datasetPromise;
+  datasetPromise = fetch(DATASET_URL)
+    .then((res) => {
+      if (!res.ok) throw new Error(`Dataset fetch failed: ${res.status}`);
+      return res.json() as Promise<Dataset>;
+    })
+    .catch((err) => {
+      datasetPromise = null;
+      throw err;
+    });
+  return datasetPromise;
+}
+
+function cityKey(cityName: string, countryName: string): string {
+  return `${cityName.trim().toLowerCase()}|${countryName.trim().toLowerCase()}`;
+}
+
 export async function fetchCities(): Promise<CityOption[]> {
-  const res = await fetch(`${API_BASE}/cities`, { method: 'GET', headers: API_HEADERS });
-  if (!res.ok) throw new Error(`Cities fetch failed: ${res.status}`);
-  const data: unknown = await res.json();
-  const options: CityOption[] = [];
-  const raw = Array.isArray(data)
-    ? data
-    : (data && typeof data === 'object' && 'cities' in data
-        ? (data as { cities: unknown }).cities
-        : data);
-  const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
-  for (const item of list) {
-    if (item && typeof item === 'object') {
-      const o = item as Record<string, unknown>;
-      const cityName = (o.city_name ?? o.cityName ?? o.name ?? o.city ?? '') as string;
-      const countryName = (o.country_name ?? o.countryName ?? o.country ?? '') as string;
-      if (cityName && countryName) {
-        options.push({
-          cityName: String(cityName).trim(),
-          countryName: String(countryName).trim(),
-          cityId: typeof o.city_id === 'number' ? o.city_id : undefined,
-        });
-      }
-    }
-  }
-  return options;
+  const { cities } = await loadDataset();
+  return cities.map((c) => ({ cityName: c.city, countryName: c.country }));
 }
 
 export type CityPricesResult = {
@@ -257,29 +252,18 @@ export async function fetchPricesForCity(
   cityName: string,
   countryName: string,
 ): Promise<CityPricesResult> {
-  const url = new URL(`${API_BASE}/prices`);
-  url.searchParams.set('city_name', cityName.trim());
-  url.searchParams.set('country_name', countryName.trim());
-  const response = await fetch(url.toString(), { method: 'GET', headers: API_HEADERS });
-  if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
-  const data = (await response.json()) as ApiPricesResponse;
-  if (data.error) {
-    throw new Error(typeof data.error === 'string' ? data.error : 'API returned an error.');
+  const { cities } = await loadDataset();
+  const key = cityKey(cityName, countryName);
+  const entry = cities.find(
+    (c) => cityKey(c.city, c.country) === key,
+  );
+  if (!entry) {
+    throw new Error(`No price data for ${cityName}, ${countryName}.`);
   }
-  let fetchedPrices: ApiPriceItem[] = [];
-  if (Array.isArray(data.prices)) {
-    fetchedPrices = data.prices;
-  } else if (data.prices && typeof data.prices === 'object' && !Array.isArray(data.prices)) {
-    const vals = Object.values(data.prices);
-    fetchedPrices = vals.flat().filter(
-      (x): x is ApiPriceItem => x != null && typeof x === 'object',
-    );
-  }
-
-  const exchangeRate =
-    data.exchange_rate && typeof data.exchange_rate === 'object'
-      ? data.exchange_rate
-      : null;
-
-  return { prices: fetchedPrices, exchangeRate };
+  const prices: ApiPriceItem[] = entry.prices.map((p) => ({
+    category_name: p.category,
+    item_name: p.item,
+    usd: { avg: p.usd },
+  }));
+  return { prices, exchangeRate: null };
 }

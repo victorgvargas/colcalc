@@ -32,33 +32,11 @@ import {
   Cell,
 } from 'recharts';
 import { getUsdRates, getUsdToCurrencyRate } from '../../api/exchangeRates';
-
-type ApiPriceItem = {
-  category_name?: string;
-  category?: string;
-  item_name?: string;
-  item?: string;
-  avg?: number;
-  avg_price?: number;
-  average_price?: number;
-  min?: number;
-  max?: number;
-  price?: number;
-  value?: number;
-  usd_price?: number;
-  usd?: {
-    min?: number | string;
-    max?: number | string;
-    avg?: number | string;
-    avg_price?: number | string;
-    average_price?: number | string;
-    price?: number | string;
-    value?: number | string;
-    [key: string]: unknown;
-  };
-  currency_code?: string;
-  [key: string]: unknown;
-};
+import {
+  fetchCities,
+  fetchPricesForCity,
+  type ApiPriceItem,
+} from '../../api/costOfLiving';
 
 const PRICE_KEYS = [
   'avg',
@@ -71,16 +49,6 @@ const PRICE_KEYS = [
   'min',
   'max',
 ] as const;
-
-type ApiPricesResponse = {
-  city_id?: number;
-  city_name?: string;
-  country_name?: string;
-  exchange_rate?: Record<string, number>;
-  prices?: ApiPriceItem[];
-  error?: string | null;
-  [key: string]: unknown;
-};
 
 type CityOption = {
   cityName: string;
@@ -377,12 +345,6 @@ function computeMonthlyCostsFromPrices(
   return { totalUsd, byCategory };
 }
 
-const API_BASE = 'https://cost-of-living-and-prices.p.rapidapi.com';
-const API_HEADERS = {
-  'x-rapidapi-key': 'bf8010588dmsh35bf3ec00a6a414p1d2bb4jsn76cf746787c2',
-  'x-rapidapi-host': 'cost-of-living-and-prices.p.rapidapi.com',
-};
-
 const CURRENCIES = {
   USD: { name: 'US Dollar', symbol: 'USD', rateToUsd: 1 },
   EUR: { name: 'Euro', symbol: 'EUR', rateToUsd: 1.08 },
@@ -462,43 +424,13 @@ const Calculator: React.FC = () => {
     if (citiesLoadedRef.current) return;
     citiesLoadedRef.current = true;
     setCitiesLoading(true);
-    let cancelled = false;
-    fetch(`${API_BASE}/cities`, { method: 'GET', headers: API_HEADERS })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Cities fetch failed: ${res.status}`);
-        return res.json();
-      })
-      .then((data: unknown) => {
-        if (cancelled) return;
-        const options: CityOption[] = [];
-        const raw = Array.isArray(data) ? data : (data && typeof data === 'object' && 'cities' in data ? (data as { cities: unknown }).cities : data);
-        const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
-        for (const item of list) {
-          if (item && typeof item === 'object') {
-            const o = item as Record<string, unknown>;
-            const cityName = (o.city_name ?? o.cityName ?? o.name ?? o.city ?? '') as string;
-            const countryName = (o.country_name ?? o.countryName ?? o.country ?? '') as string;
-            if (cityName && countryName) {
-              options.push({
-                cityName: String(cityName).trim(),
-                countryName: String(countryName).trim(),
-                cityId: typeof o.city_id === 'number' ? o.city_id : undefined,
-              });
-            }
-          }
-        }
-        setAllCities(options);
-      })
+    fetchCities()
+      .then(setAllCities)
       .catch(() => {
-        if (!cancelled) {
-          setAllCities([]);
-          citiesLoadedRef.current = false;
-        }
+        setAllCities([]);
+        citiesLoadedRef.current = false;
       })
-      .finally(() => {
-        if (!cancelled) setCitiesLoading(false);
-      });
-    return () => { cancelled = true; };
+      .finally(() => setCitiesLoading(false));
   }, []);
 
   const filteredCityOptions = useMemo(() => {
@@ -659,30 +591,10 @@ const Calculator: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const url = new URL(`${API_BASE}/prices`);
-      url.searchParams.set('city_name', city.trim());
-      url.searchParams.set('country_name', country.trim());
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: API_HEADERS,
-      });
-
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
-      }
-
-      const data = (await response.json()) as ApiPricesResponse;
-      if (data.error) {
-        throw new Error(typeof data.error === 'string' ? data.error : 'API returned an error.');
-      }
-      let fetchedPrices: ApiPriceItem[] = [];
-      if (Array.isArray(data.prices)) {
-        fetchedPrices = data.prices;
-      } else if (data.prices && typeof data.prices === 'object' && !Array.isArray(data.prices)) {
-        const vals = Object.values(data.prices);
-        fetchedPrices = vals.flat().filter((x): x is ApiPriceItem => x != null && typeof x === 'object');
-      }
+      const { prices: fetchedPrices } = await fetchPricesForCity(
+        city.trim(),
+        country.trim(),
+      );
 
       setPrices(fetchedPrices);
 
