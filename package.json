@@ -13,13 +13,14 @@
     "build:prerender": "node scripts/build-prerender.mjs"
   },
   "dependencies": {
-    "react-helmet-async": "^2.0.5",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^7.3.3",
     "@react-router/dev": "^7.9.3",
+    "@vercel/analytics": "^2.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-helmet-async": "^2.0.5",
     "recharts": "^3.7.0"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import Layout from './components/Layout/index.tsx';
 import Calculator from './components/Calculator/index.tsx';
 import CitiesComparison from './components/CitiesComparison/index.tsx';
@@ -29,6 +30,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HelmetProvider>
       <RouterProvider router={router} />
+      <Analytics />
     </HelmetProvider>
   </StrictMode>,
 )
