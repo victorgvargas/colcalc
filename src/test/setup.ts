@@ -18,6 +18,11 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
 }
 
+// jsdom doesn't implement Element.scrollTo; Assistant's auto-scroll effect calls it.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = () => {};
+}
+
 // jsdom doesn't implement matchMedia; MUI queries it.
 if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string) =>
