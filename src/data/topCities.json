@@ -1,0 +1,438 @@
+{
+  "cities": [
+    {
+      "city": "New York",
+      "country": "United States",
+      "slug": "new-york-united-states"
+    },
+    {
+      "city": "London",
+      "country": "United Kingdom",
+      "slug": "london-united-kingdom"
+    },
+    {
+      "city": "Berlin",
+      "country": "Germany",
+      "slug": "berlin-germany"
+    },
+    {
+      "city": "Paris",
+      "country": "France",
+      "slug": "paris-france"
+    },
+    {
+      "city": "Amsterdam",
+      "country": "Netherlands",
+      "slug": "amsterdam-netherlands"
+    },
+    {
+      "city": "Lisbon",
+      "country": "Portugal",
+      "slug": "lisbon-portugal"
+    },
+    {
+      "city": "Madrid",
+      "country": "Spain",
+      "slug": "madrid-spain"
+    },
+    {
+      "city": "Barcelona",
+      "country": "Spain",
+      "slug": "barcelona-spain"
+    },
+    {
+      "city": "Rome",
+      "country": "Italy",
+      "slug": "rome-italy"
+    },
+    {
+      "city": "Milan",
+      "country": "Italy",
+      "slug": "milan-italy"
+    },
+    {
+      "city": "Vienna",
+      "country": "Austria",
+      "slug": "vienna-austria"
+    },
+    {
+      "city": "Zurich",
+      "country": "Switzerland",
+      "slug": "zurich-switzerland"
+    },
+    {
+      "city": "Dublin",
+      "country": "Ireland",
+      "slug": "dublin-ireland"
+    },
+    {
+      "city": "Copenhagen",
+      "country": "Denmark",
+      "slug": "copenhagen-denmark"
+    },
+    {
+      "city": "Stockholm",
+      "country": "Sweden",
+      "slug": "stockholm-sweden"
+    },
+    {
+      "city": "Oslo",
+      "country": "Norway",
+      "slug": "oslo-norway"
+    },
+    {
+      "city": "Helsinki",
+      "country": "Finland",
+      "slug": "helsinki-finland"
+    },
+    {
+      "city": "Prague",
+      "country": "Czech Republic",
+      "slug": "prague-czech-republic"
+    },
+    {
+      "city": "Warsaw",
+      "country": "Poland",
+      "slug": "warsaw-poland"
+    },
+    {
+      "city": "Budapest",
+      "country": "Hungary",
+      "slug": "budapest-hungary"
+    },
+    {
+      "city": "Athens",
+      "country": "Greece",
+      "slug": "athens-greece"
+    },
+    {
+      "city": "Tallinn",
+      "country": "Estonia",
+      "slug": "tallinn-estonia"
+    },
+    {
+      "city": "Reykjavik",
+      "country": "Iceland",
+      "slug": "reykjavik-iceland"
+    },
+    {
+      "city": "Toronto",
+      "country": "Canada",
+      "slug": "toronto-canada"
+    },
+    {
+      "city": "Vancouver",
+      "country": "Canada",
+      "slug": "vancouver-canada"
+    },
+    {
+      "city": "Montreal",
+      "country": "Canada",
+      "slug": "montreal-canada"
+    },
+    {
+      "city": "Los Angeles",
+      "country": "United States",
+      "slug": "los-angeles-united-states"
+    },
+    {
+      "city": "Chicago",
+      "country": "United States",
+      "slug": "chicago-united-states"
+    },
+    {
+      "city": "Seattle",
+      "country": "United States",
+      "slug": "seattle-united-states"
+    },
+    {
+      "city": "Austin",
+      "country": "United States",
+      "slug": "austin-united-states"
+    },
+    {
+      "city": "Miami",
+      "country": "United States",
+      "slug": "miami-united-states"
+    },
+    {
+      "city": "Mexico City",
+      "country": "Mexico",
+      "slug": "mexico-city-mexico"
+    },
+    {
+      "city": "Sao Paulo",
+      "country": "Brazil",
+      "slug": "sao-paulo-brazil"
+    },
+    {
+      "city": "Buenos Aires",
+      "country": "Argentina",
+      "slug": "buenos-aires-argentina"
+    },
+    {
+      "city": "Tokyo",
+      "country": "Japan",
+      "slug": "tokyo-japan"
+    },
+    {
+      "city": "Seoul",
+      "country": "South Korea",
+      "slug": "seoul-south-korea"
+    },
+    {
+      "city": "Singapore",
+      "country": "Singapore",
+      "slug": "singapore-singapore"
+    },
+    {
+      "city": "Hong Kong",
+      "country": "Hong Kong",
+      "slug": "hong-kong-hong-kong"
+    },
+    {
+      "city": "Bangkok",
+      "country": "Thailand",
+      "slug": "bangkok-thailand"
+    },
+    {
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "slug": "kuala-lumpur-malaysia"
+    },
+    {
+      "city": "Sydney",
+      "country": "Australia",
+      "slug": "sydney-australia"
+    },
+    {
+      "city": "Melbourne",
+      "country": "Australia",
+      "slug": "melbourne-australia"
+    },
+    {
+      "city": "Auckland",
+      "country": "New Zealand",
+      "slug": "auckland-new-zealand"
+    },
+    {
+      "city": "Dubai",
+      "country": "United Arab Emirates",
+      "slug": "dubai-united-arab-emirates"
+    },
+    {
+      "city": "Istanbul",
+      "country": "Turkey",
+      "slug": "istanbul-turkey"
+    },
+    {
+      "city": "Tel Aviv-Yafo",
+      "country": "Israel",
+      "slug": "tel-aviv-yafo-israel"
+    },
+    {
+      "city": "Mumbai",
+      "country": "India",
+      "slug": "mumbai-india"
+    },
+    {
+      "city": "Bangalore",
+      "country": "India",
+      "slug": "bangalore-india"
+    },
+    {
+      "city": "Cape Town",
+      "country": "South Africa",
+      "slug": "cape-town-south-africa"
+    }
+  ],
+  "pairs": [
+    {
+      "a": {
+        "city": "Berlin",
+        "country": "Germany"
+      },
+      "b": {
+        "city": "Lisbon",
+        "country": "Portugal"
+      },
+      "slug": "berlin-germany-vs-lisbon-portugal"
+    },
+    {
+      "a": {
+        "city": "Amsterdam",
+        "country": "Netherlands"
+      },
+      "b": {
+        "city": "Berlin",
+        "country": "Germany"
+      },
+      "slug": "amsterdam-netherlands-vs-berlin-germany"
+    },
+    {
+      "a": {
+        "city": "London",
+        "country": "United Kingdom"
+      },
+      "b": {
+        "city": "Berlin",
+        "country": "Germany"
+      },
+      "slug": "london-united-kingdom-vs-berlin-germany"
+    },
+    {
+      "a": {
+        "city": "New York",
+        "country": "United States"
+      },
+      "b": {
+        "city": "London",
+        "country": "United Kingdom"
+      },
+      "slug": "new-york-united-states-vs-london-united-kingdom"
+    },
+    {
+      "a": {
+        "city": "London",
+        "country": "United Kingdom"
+      },
+      "b": {
+        "city": "New York",
+        "country": "United States"
+      },
+      "slug": "london-united-kingdom-vs-new-york-united-states"
+    },
+    {
+      "a": {
+        "city": "Paris",
+        "country": "France"
+      },
+      "b": {
+        "city": "Berlin",
+        "country": "Germany"
+      },
+      "slug": "paris-france-vs-berlin-germany"
+    },
+    {
+      "a": {
+        "city": "Madrid",
+        "country": "Spain"
+      },
+      "b": {
+        "city": "Lisbon",
+        "country": "Portugal"
+      },
+      "slug": "madrid-spain-vs-lisbon-portugal"
+    },
+    {
+      "a": {
+        "city": "Barcelona",
+        "country": "Spain"
+      },
+      "b": {
+        "city": "Lisbon",
+        "country": "Portugal"
+      },
+      "slug": "barcelona-spain-vs-lisbon-portugal"
+    },
+    {
+      "a": {
+        "city": "Zurich",
+        "country": "Switzerland"
+      },
+      "b": {
+        "city": "Berlin",
+        "country": "Germany"
+      },
+      "slug": "zurich-switzerland-vs-berlin-germany"
+    },
+    {
+      "a": {
+        "city": "Amsterdam",
+        "country": "Netherlands"
+      },
+      "b": {
+        "city": "Lisbon",
+        "country": "Portugal"
+      },
+      "slug": "amsterdam-netherlands-vs-lisbon-portugal"
+    },
+    {
+      "a": {
+        "city": "Singapore",
+        "country": "Singapore"
+      },
+      "b": {
+        "city": "Hong Kong",
+        "country": "Hong Kong"
+      },
+      "slug": "singapore-singapore-vs-hong-kong-hong-kong"
+    },
+    {
+      "a": {
+        "city": "Tokyo",
+        "country": "Japan"
+      },
+      "b": {
+        "city": "Seoul",
+        "country": "South Korea"
+      },
+      "slug": "tokyo-japan-vs-seoul-south-korea"
+    },
+    {
+      "a": {
+        "city": "Sydney",
+        "country": "Australia"
+      },
+      "b": {
+        "city": "Melbourne",
+        "country": "Australia"
+      },
+      "slug": "sydney-australia-vs-melbourne-australia"
+    },
+    {
+      "a": {
+        "city": "Toronto",
+        "country": "Canada"
+      },
+      "b": {
+        "city": "Vancouver",
+        "country": "Canada"
+      },
+      "slug": "toronto-canada-vs-vancouver-canada"
+    },
+    {
+      "a": {
+        "city": "Dubai",
+        "country": "United Arab Emirates"
+      },
+      "b": {
+        "city": "Singapore",
+        "country": "Singapore"
+      },
+      "slug": "dubai-united-arab-emirates-vs-singapore-singapore"
+    },
+    {
+      "a": {
+        "city": "Mexico City",
+        "country": "Mexico"
+      },
+      "b": {
+        "city": "Madrid",
+        "country": "Spain"
+      },
+      "slug": "mexico-city-mexico-vs-madrid-spain"
+    },
+    {
+      "a": {
+        "city": "Prague",
+        "country": "Czech Republic"
+      },
+      "b": {
+        "city": "Berlin",
+        "country": "Germany"
+      },
+      "slug": "prague-czech-republic-vs-berlin-germany"
+    }
+  ]
+}

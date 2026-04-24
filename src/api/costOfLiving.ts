@@ -243,6 +243,17 @@ export async function fetchCities(): Promise<CityOption[]> {
   return cities.map((c) => ({ cityName: c.city, countryName: c.country }));
 }
 
+export type DatasetCity = {
+  city: string;
+  country: string;
+  prices: { category: string; item: string; usd: number }[];
+};
+
+export async function fetchDatasetCities(): Promise<DatasetCity[]> {
+  const { cities } = await loadDataset();
+  return cities;
+}
+
 export type CityPricesResult = {
   prices: ApiPriceItem[];
   exchangeRate: Record<string, number> | null;

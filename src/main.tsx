@@ -7,6 +7,8 @@ import Calculator from './components/Calculator/index.tsx';
 import CitiesComparison from './components/CitiesComparison/index.tsx';
 import PurchasingPower from './components/PurchasingPower/index.tsx';
 import TaxCalculator from './components/TaxCalculator/index.tsx';
+import CityPage from './components/CityPage/index.tsx';
+import ComparisonPage from './components/ComparisonPage/index.tsx';
 
 const router = createBrowserRouter([
   {
@@ -17,6 +19,8 @@ const router = createBrowserRouter([
       { path: 'cities-comparison', Component: CitiesComparison },
       { path: 'purchasing-power', Component: PurchasingPower },
       { path: 'tax-calculator', Component: TaxCalculator },
+      { path: 'cost-of-living/:citySlug', Component: CityPage },
+      { path: 'compare/:pairSlug', Component: ComparisonPage },
     ],
   },
 ]);

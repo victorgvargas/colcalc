@@ -38,6 +38,7 @@ import {
   fetchPricesForCity,
   type ApiPriceItem,
 } from '../../api/costOfLiving';
+import TopCitiesDirectory from '../TopCitiesDirectory';
 
 const PRICE_KEYS = [
   'avg',
@@ -924,6 +925,8 @@ const Calculator: React.FC = () => {
           </Box>
         </CardContent>
       </Card>
+
+      <TopCitiesDirectory />
 
       <Box
         sx={{

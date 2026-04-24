@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/build-seo.mjs && tsc -b && vite build && node scripts/build-prerender.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:cost-of-living": "node scripts/build-cost-of-living.mjs"
+    "build:cost-of-living": "node scripts/build-cost-of-living.mjs",
+    "build:seo": "node scripts/build-seo.mjs",
+    "build:prerender": "node scripts/build-prerender.mjs"
   },
   "dependencies": {
     "react-helmet-async": "^2.0.5",
