@@ -499,3 +499,63 @@ export function toDisplayCurrency(
 export function getRecordIncomeDisplay(r: CalculationRecord): number {
   return typeof r.taxRate === 'number' ? r.income * (1 - r.taxRate) : r.income;
 }
+
+/** Version marker we write into exported files so importers can detect drift. */
+export const RECORDS_EXPORT_VERSION = 1;
+
+export type RecordsExport = {
+  version: number;
+  exportedAt: string;
+  records: CalculationRecord[];
+};
+
+/** Serialize records for export as pretty-printed JSON. */
+export function serializeRecordsForExport(records: CalculationRecord[]): string {
+  const payload: RecordsExport = {
+    version: RECORDS_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    records,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+/**
+ * Parse an imported payload back into records. Accepts either the modern
+ * envelope `{ version, records: [...] }` or a bare `[...]` array (the legacy
+ * shape, which matches what parseStoredRecords reads). Returns `null` if the
+ * file isn't recognizable at all.
+ */
+export function parseRecordsImport(raw: string): CalculationRecord[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      const records = parseStoredRecords(JSON.stringify(parsed));
+      return records.length > 0 ? records : null;
+    }
+    if (parsed && typeof parsed === 'object' && 'records' in parsed) {
+      const inner = (parsed as { records: unknown }).records;
+      if (Array.isArray(inner)) {
+        const records = parseStoredRecords(JSON.stringify(inner));
+        return records.length > 0 ? records : null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Merge imported records with existing ones, de-duplicating by id. Imported
+ * records win when ids collide (treated as updates). Existing records that
+ * aren't in the import survive.
+ */
+export function mergeImportedRecords(
+  existing: CalculationRecord[],
+  incoming: CalculationRecord[],
+): CalculationRecord[] {
+  const byId = new Map<number, CalculationRecord>();
+  for (const r of existing) byId.set(r.id, r);
+  for (const r of incoming) byId.set(r.id, r);
+  return Array.from(byId.values()).sort((a, b) => b.id - a.id);
+}

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
+  Button,
   IconButton,
   Paper,
   SvgIcon,
@@ -48,6 +49,10 @@ type Props = {
   onDeleteRecord: (id: number) => void;
   /** Live USD rates; used to normalize record currencies when sorting. */
   usdRates?: Record<string, number> | null;
+  /** Triggered when the user clicks "Export" — parent handles the download. */
+  onExport?: () => void;
+  /** Called with the raw text of an uploaded JSON file. Parent parses & merges. */
+  onImport?: (text: string) => { ok: true; imported: number } | { ok: false; error: string };
 };
 
 const HistoryTable: React.FC<Props> = ({
@@ -57,7 +62,34 @@ const HistoryTable: React.FC<Props> = ({
   onEditRecord,
   onDeleteRecord,
   usdRates = null,
+  onExport,
+  onImport,
 }) => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importMessage, setImportMessage] = useState<
+    { kind: 'success' | 'error'; text: string } | null
+  >(null);
+
+  const triggerImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset so picking the same file twice re-triggers change.
+    e.target.value = '';
+    if (!file || !onImport) return;
+    const text = await file.text();
+    const result = onImport(text);
+    if (result.ok) {
+      setImportMessage({
+        kind: 'success',
+        text: `Imported ${result.imported} record${result.imported === 1 ? '' : 's'}.`,
+      });
+    } else {
+      setImportMessage({ kind: 'error', text: result.error });
+    }
+  };
   const [sortKey, setSortKey] = useState<SortKey>('city');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [page, setPage] = useState(0);
@@ -130,20 +162,58 @@ const HistoryTable: React.FC<Props> = ({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: 1,
+          flexWrap: 'wrap',
           p: 2,
         }}
       >
         <Typography variant="h6">Calculation history</Typography>
-        <TextField
-          size="small"
-          label="Search by city"
-          value={citySearch}
-          onChange={(e) => {
-            setCitySearch(e.target.value);
-            setPage(0);
-          }}
-        />
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+          {onExport && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={onExport}
+              disabled={records.length === 0}
+            >
+              Export
+            </Button>
+          )}
+          {onImport && (
+            <>
+              <Button size="small" variant="outlined" onClick={triggerImport}>
+                Import
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                hidden
+                aria-label="Import records"
+                onChange={handleFileChange}
+              />
+            </>
+          )}
+          <TextField
+            size="small"
+            label="Search by city"
+            value={citySearch}
+            onChange={(e) => {
+              setCitySearch(e.target.value);
+              setPage(0);
+            }}
+          />
+        </Box>
       </Box>
+      {importMessage && (
+        <Typography
+          variant="body2"
+          color={importMessage.kind === 'success' ? 'success.main' : 'error.main'}
+          sx={{ px: 2, pb: 1 }}
+        >
+          {importMessage.text}
+        </Typography>
+      )}
       <Table size="small">
         <TableHead>
           <TableRow>

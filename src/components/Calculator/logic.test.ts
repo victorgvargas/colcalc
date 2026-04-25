@@ -7,8 +7,11 @@ import {
   computeMonthlyCostsFromPrices,
   getCurrencyMeta,
   median,
+  mergeImportedRecords,
+  parseRecordsImport,
   parseStoredRecords,
   readShareStateFromSearch,
+  serializeRecordsForExport,
   toDisplayCurrency,
   type CalculationRecord,
 } from './logic';
@@ -427,6 +430,104 @@ describe('parseStoredRecords — lifestyle', () => {
       { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, lifestyle: 'lavish' },
     ]);
     expect(parseStoredRecords(stored)[0].lifestyle).toBeUndefined();
+  });
+});
+
+describe('serializeRecordsForExport + parseRecordsImport', () => {
+  const record: CalculationRecord = {
+    id: 42,
+    city: 'Berlin',
+    country: 'Germany',
+    income: 5000,
+    numberOfKids: 1,
+    totalCosts: 2500,
+    netBudget: 2500,
+    currency: 'EUR',
+    baseCostsInRecordCurrency: 2000,
+    childcarePerChildInRecordCurrency: 500,
+    costBreakdown: [{ name: 'Rent', value: 1200 }],
+    taxRate: 0.3,
+    lifestyle: 'average',
+    pricePointCount: 23,
+  };
+
+  it('produces a JSON envelope with version, exportedAt, and records', () => {
+    const json = serializeRecordsForExport([record]);
+    const parsed = JSON.parse(json);
+    expect(parsed.version).toBe(1);
+    expect(typeof parsed.exportedAt).toBe('string');
+    expect(Array.isArray(parsed.records)).toBe(true);
+    expect(parsed.records[0].id).toBe(42);
+  });
+
+  it('round-trips a real record through export -> import', () => {
+    const json = serializeRecordsForExport([record]);
+    const back = parseRecordsImport(json);
+    expect(back).toHaveLength(1);
+    expect(back![0]).toEqual(record);
+  });
+
+  it('parseRecordsImport accepts a bare array (legacy shape)', () => {
+    const json = JSON.stringify([record]);
+    const back = parseRecordsImport(json);
+    expect(back).toHaveLength(1);
+    expect(back![0].city).toBe('Berlin');
+  });
+
+  it('parseRecordsImport returns null for garbage', () => {
+    expect(parseRecordsImport('')).toBeNull();
+    expect(parseRecordsImport('not json')).toBeNull();
+    expect(parseRecordsImport('{"version":1}')).toBeNull();
+    expect(parseRecordsImport('{"records":"not-an-array"}')).toBeNull();
+    // An envelope with an empty array is also rejected (nothing to import).
+    expect(parseRecordsImport('{"version":1,"records":[]}')).toBeNull();
+  });
+
+  it('parseRecordsImport skips entries that fail parseStoredRecords validation', () => {
+    const payload = JSON.stringify({
+      version: 1,
+      records: [
+        { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1 },
+        { id: 2, city: '', country: 'Germany' }, // missing city → dropped
+      ],
+    });
+    const back = parseRecordsImport(payload);
+    expect(back).toHaveLength(1);
+    expect(back![0].id).toBe(1);
+  });
+});
+
+describe('mergeImportedRecords', () => {
+  const a = (id: number, city = 'Berlin'): CalculationRecord => ({
+    id,
+    city,
+    country: 'Germany',
+    income: 1,
+    numberOfKids: 0,
+    totalCosts: 0,
+    netBudget: 1,
+    currency: 'EUR',
+  });
+
+  it('concatenates when ids are disjoint and sorts by id desc', () => {
+    const merged = mergeImportedRecords([a(1, 'Berlin')], [a(2, 'Paris')]);
+    expect(merged.map((r) => r.id)).toEqual([2, 1]);
+  });
+
+  it('overwrites existing records when ids collide (import wins)', () => {
+    const existing = [a(1, 'Berlin')];
+    const incoming = [{ ...a(1), city: 'Berlin (updated)' }];
+    const merged = mergeImportedRecords(existing, incoming);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].city).toBe('Berlin (updated)');
+  });
+
+  it('keeps existing records that are not in the import', () => {
+    const existing = [a(1, 'Berlin'), a(2, 'Paris')];
+    const incoming = [{ ...a(2), city: 'Paris (updated)' }];
+    const merged = mergeImportedRecords(existing, incoming);
+    expect(merged.map((r) => r.id).sort()).toEqual([1, 2]);
+    expect(merged.find((r) => r.id === 2)!.city).toBe('Paris (updated)');
   });
 });
 

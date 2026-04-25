@@ -24,7 +24,10 @@ import {
   buildCurrencyOptions,
   computeMonthlyCostsFromPrices,
   getCurrencyMeta,
+  mergeImportedRecords,
+  parseRecordsImport,
   readShareStateFromSearch,
+  serializeRecordsForExport,
   toDisplayCurrency,
   type CalculationRecord,
   type CurrencyCode,
@@ -108,7 +111,7 @@ const Calculator: React.FC = () => {
       cancelled = true;
     };
   }, []);
-  const { records, addRecord, deleteRecord, updateRecord } = useCalculationRecords();
+  const { records, setRecords, addRecord, deleteRecord, updateRecord } = useCalculationRecords();
 
   useEffect(() => {
     let cancelled = false;
@@ -440,6 +443,34 @@ const Calculator: React.FC = () => {
     [deleteRecord],
   );
 
+  const handleExportRecords = useCallback(() => {
+    if (records.length === 0) return;
+    const blob = new Blob([serializeRecordsForExport(records)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.download = `colcalc-records-${stamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [records]);
+
+  const handleImportRecords = useCallback(
+    (text: string): { ok: true; imported: number } | { ok: false; error: string } => {
+      const incoming = parseRecordsImport(text);
+      if (!incoming) {
+        return { ok: false, error: 'Could not read records from that file.' };
+      }
+      setRecords((prev) => mergeImportedRecords(prev, incoming));
+      return { ok: true, imported: incoming.length };
+    },
+    [setRecords],
+  );
+
   const handleEditRecord = useCallback((record: CalculationRecord) => {
     setEditModalRecord(record);
   }, []);
@@ -555,6 +586,8 @@ const Calculator: React.FC = () => {
             onEditRecord={handleEditRecord}
             onDeleteRecord={handleDeleteRecord}
             usdRates={usdRates}
+            onExport={handleExportRecords}
+            onImport={handleImportRecords}
           />
         </Box>
       </Box>
