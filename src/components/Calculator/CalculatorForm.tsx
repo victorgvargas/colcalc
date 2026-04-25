@@ -12,8 +12,9 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  CURRENCIES,
+  getCurrencyMeta,
   type CurrencyCode,
+  type CurrencyMeta,
   type LifestyleLevel,
   type RentLocation,
 } from './logic';
@@ -42,6 +43,9 @@ type Props = {
   setLifestyle: (v: LifestyleLevel) => void;
   applyTax: boolean;
   setApplyTax: (v: boolean) => void;
+
+  /** Options driving the Currency dropdown — built from live USD rates. */
+  currencyOptions: CurrencyMeta[];
 
   /** Autocomplete data */
   allCities: CityOption[];
@@ -84,6 +88,7 @@ const CalculatorForm: React.FC<Props> = ({
   setLifestyle,
   applyTax,
   setApplyTax,
+  currencyOptions,
   allCities,
   filteredCityOptions,
   citiesLoading,
@@ -130,9 +135,9 @@ const CalculatorForm: React.FC<Props> = ({
               value={incomeCurrency}
               onChange={(e) => setIncomeCurrency(e.target.value as CurrencyCode)}
             >
-              {Object.entries(CURRENCIES).map(([code, { name, symbol }]) => (
+              {currencyOptions.map(({ code, name, symbol }) => (
                 <MenuItem key={code} value={code}>
-                  {name} ({symbol})
+                  {name === code ? code : `${name} (${symbol})`}
                 </MenuItem>
               ))}
             </TextField>
@@ -281,19 +286,20 @@ const CalculatorForm: React.FC<Props> = ({
             <Box textAlign={{ xs: 'left', sm: 'right' }}>
               <Typography variant="subtitle1">
                 Total costs: {totalCostsInCurrency.toFixed(2)}{' '}
-                {CURRENCIES[incomeCurrency].symbol}
+                {getCurrencyMeta(incomeCurrency).symbol}
               </Typography>
               {applyTax && taxEffectiveRate != null && (
                 <Typography variant="body2" color="text.secondary">
                   Net income (after {(taxEffectiveRate * 100).toFixed(1)}% tax):{' '}
-                  {netIncomeAfterTax.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
+                  {netIncomeAfterTax.toFixed(2)} {getCurrencyMeta(incomeCurrency).symbol}
                 </Typography>
               )}
               <Typography
                 variant="subtitle1"
                 color={netBudget >= 0 ? 'success.main' : 'error.main'}
               >
-                Net budget: {netBudget.toFixed(2)} {CURRENCIES[incomeCurrency].symbol}
+                Net budget: {netBudget.toFixed(2)}{' '}
+                {getCurrencyMeta(incomeCurrency).symbol}
               </Typography>
             </Box>
           </Box>

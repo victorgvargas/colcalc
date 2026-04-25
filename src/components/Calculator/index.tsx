@@ -15,9 +15,10 @@ import EditRecordDialog from './EditRecordDialog';
 import ExpenditureBreakdown from './ExpenditureBreakdown';
 import HistoryTable from './HistoryTable';
 import {
-  CURRENCIES,
   RECORDS_STORAGE_KEY,
+  buildCurrencyOptions,
   computeMonthlyCostsFromPrices,
+  getCurrencyMeta,
   parseStoredRecords,
   readShareStateFromSearch,
   toDisplayCurrency,
@@ -41,8 +42,8 @@ const Calculator: React.FC = () => {
   const initialPrefill = routerPrefill ?? urlPrefill ?? null;
 
   const initialCurrency: CurrencyCode =
-    initialPrefill?.currency && initialPrefill.currency in CURRENCIES
-      ? (initialPrefill.currency as CurrencyCode)
+    initialPrefill?.currency && /^[A-Za-z]{3}$/.test(initialPrefill.currency)
+      ? initialPrefill.currency.toUpperCase()
       : 'EUR';
 
   const [income, setIncome] = useState<string>(
@@ -193,10 +194,22 @@ const Calculator: React.FC = () => {
   }, [rawTotalUsd, rawByCategory, numberOfKids]);
 
   const getCurrencyPerUsd = useCallback(
-    (code: CurrencyCode): number =>
-      getUsdToCurrencyRate(usdRates, code, 1 / CURRENCIES[code].rateToUsd),
+    (code: CurrencyCode): number => {
+      const meta = getCurrencyMeta(code);
+      return getUsdToCurrencyRate(usdRates, code, 1 / meta.rateToUsd);
+    },
     [usdRates],
   );
+
+  const currencyOptions = useMemo(() => {
+    const list = buildCurrencyOptions(usdRates);
+    // Ensure the current selection appears even if we have neither live rate
+    // nor canonical metadata for it (e.g. preserved from an old record).
+    if (!list.some((c) => c.code === incomeCurrency.toUpperCase())) {
+      list.push(getCurrencyMeta(incomeCurrency));
+    }
+    return list;
+  }, [usdRates, incomeCurrency]);
 
   const effectiveCurrencyPerUsd = getCurrencyPerUsd(incomeCurrency);
   const eurPerUsdForChart = getCurrencyPerUsd('EUR');
@@ -240,11 +253,11 @@ const Calculator: React.FC = () => {
         })
         .map((item) => ({
           ...item,
-          value: toDisplayCurrency(item.value, selectedRecord.currency),
+          value: toDisplayCurrency(item.value, selectedRecord.currency, usdRates),
         }));
     }
     return liveChartData;
-  }, [selectedRecord, liveChartData]);
+  }, [selectedRecord, liveChartData, usdRates]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -495,6 +508,7 @@ const Calculator: React.FC = () => {
         setLifestyle={setLifestyle}
         applyTax={applyTax}
         setApplyTax={setApplyTax}
+        currencyOptions={currencyOptions}
         allCities={allCities}
         filteredCityOptions={filteredCityOptions}
         citiesLoading={citiesLoading}
@@ -530,6 +544,7 @@ const Calculator: React.FC = () => {
             onSelectRecord={setSelectedRecordId}
             onEditRecord={handleEditRecord}
             onDeleteRecord={handleDeleteRecord}
+            usdRates={usdRates}
           />
         </Box>
       </Box>

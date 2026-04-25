@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  CURRENCIES,
+  getCurrencyMeta,
   getRecordIncomeDisplay,
   toDisplayCurrency,
   type CalculationRecord,
@@ -46,6 +46,8 @@ type Props = {
   onSelectRecord: (id: number) => void;
   onEditRecord: (record: CalculationRecord) => void;
   onDeleteRecord: (id: number) => void;
+  /** Live USD rates; used to normalize record currencies when sorting. */
+  usdRates?: Record<string, number> | null;
 };
 
 const HistoryTable: React.FC<Props> = ({
@@ -54,6 +56,7 @@ const HistoryTable: React.FC<Props> = ({
   onSelectRecord,
   onEditRecord,
   onDeleteRecord,
+  usdRates = null,
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('city');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -75,11 +78,11 @@ const HistoryTable: React.FC<Props> = ({
       const aVal =
         sortKey === 'city'
           ? rawAVal
-          : toDisplayCurrency(rawAVal as number, a.currency);
+          : toDisplayCurrency(rawAVal as number, a.currency, usdRates);
       const bVal =
         sortKey === 'city'
           ? rawBVal
-          : toDisplayCurrency(rawBVal as number, b.currency);
+          : toDisplayCurrency(rawBVal as number, b.currency, usdRates);
 
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         const cmp = aVal.localeCompare(bVal);
@@ -95,7 +98,7 @@ const HistoryTable: React.FC<Props> = ({
     });
 
     return sorted;
-  }, [records, citySearch, sortKey, sortDirection]);
+  }, [records, citySearch, sortKey, sortDirection, usdRates]);
 
   const paginatedRecords = useMemo(() => {
     const start = page * rowsPerPage;
@@ -208,7 +211,7 @@ const HistoryTable: React.FC<Props> = ({
               <TableCell>{record.country}</TableCell>
               <TableCell align="right">
                 {getRecordIncomeDisplay(record).toFixed(2)}{' '}
-                {CURRENCIES[record.currency].symbol}
+                {getCurrencyMeta(record.currency).symbol}
                 {typeof record.taxRate === 'number' && (
                   <Typography
                     component="span"
@@ -221,7 +224,7 @@ const HistoryTable: React.FC<Props> = ({
                 )}
               </TableCell>
               <TableCell align="right">
-                {record.totalCosts.toFixed(2)} {CURRENCIES[record.currency].symbol}
+                {record.totalCosts.toFixed(2)} {getCurrencyMeta(record.currency).symbol}
               </TableCell>
               <TableCell
                 align="right"
@@ -229,7 +232,7 @@ const HistoryTable: React.FC<Props> = ({
                   color: record.netBudget >= 0 ? 'success.main' : 'error.main',
                 }}
               >
-                {record.netBudget.toFixed(2)} {CURRENCIES[record.currency].symbol}
+                {record.netBudget.toFixed(2)} {getCurrencyMeta(record.currency).symbol}
               </TableCell>
               <TableCell
                 align="center"

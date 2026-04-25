@@ -1,5 +1,14 @@
 import type { ApiPriceItem } from '../../api/costOfLiving';
 
+/**
+ * Canonical currency metadata. Primary source of exchange rates is the live
+ * `usdRates` table; these entries carry the display name and a static fallback
+ * rate used when the live rate is unavailable.
+ *
+ * The dropdown is NOT limited to this list — any currency present in
+ * `usdRates` is offered. This map just provides friendly names for the most
+ * common codes.
+ */
 export const CURRENCIES = {
   USD: { name: 'US Dollar', symbol: 'USD', rateToUsd: 1 },
   EUR: { name: 'Euro', symbol: 'EUR', rateToUsd: 1.08 },
@@ -8,9 +17,72 @@ export const CURRENCIES = {
   CHF: { name: 'Swiss Franc', symbol: 'CHF', rateToUsd: 1.12 },
   CAD: { name: 'Canadian Dollar', symbol: 'CAD', rateToUsd: 0.74 },
   AUD: { name: 'Australian Dollar', symbol: 'AUD', rateToUsd: 0.65 },
+  INR: { name: 'Indian Rupee', symbol: 'INR', rateToUsd: 0.012 },
+  BRL: { name: 'Brazilian Real', symbol: 'BRL', rateToUsd: 0.19 },
+  MXN: { name: 'Mexican Peso', symbol: 'MXN', rateToUsd: 0.058 },
+  SGD: { name: 'Singapore Dollar', symbol: 'SGD', rateToUsd: 0.74 },
+  AED: { name: 'UAE Dirham', symbol: 'AED', rateToUsd: 0.27 },
+  HKD: { name: 'Hong Kong Dollar', symbol: 'HKD', rateToUsd: 0.13 },
+  CNY: { name: 'Chinese Yuan', symbol: 'CNY', rateToUsd: 0.14 },
+  KRW: { name: 'South Korean Won', symbol: 'KRW', rateToUsd: 0.00073 },
+  SEK: { name: 'Swedish Krona', symbol: 'SEK', rateToUsd: 0.093 },
+  NOK: { name: 'Norwegian Krone', symbol: 'NOK', rateToUsd: 0.089 },
+  DKK: { name: 'Danish Krone', symbol: 'DKK', rateToUsd: 0.14 },
+  PLN: { name: 'Polish Zloty', symbol: 'PLN', rateToUsd: 0.25 },
+  CZK: { name: 'Czech Koruna', symbol: 'CZK', rateToUsd: 0.043 },
+  TRY: { name: 'Turkish Lira', symbol: 'TRY', rateToUsd: 0.029 },
+  ZAR: { name: 'South African Rand', symbol: 'ZAR', rateToUsd: 0.054 },
+  NZD: { name: 'New Zealand Dollar', symbol: 'NZD', rateToUsd: 0.59 },
 } as const;
 
-export type CurrencyCode = keyof typeof CURRENCIES;
+/**
+ * At runtime any ISO-like currency code is acceptable (we validate + fall back
+ * if we've never heard of it). The type stays a plain string so the dropdown
+ * isn't gated to this hand-maintained map.
+ */
+export type CurrencyCode = string;
+
+export type CurrencyMeta = {
+  code: string;
+  name: string;
+  symbol: string;
+  /** USD→currency rate. Used only as a fallback when live rates are missing. */
+  rateToUsd: number;
+};
+
+const KNOWN_CODES = new Set(Object.keys(CURRENCIES));
+
+export function getCurrencyMeta(code: string): CurrencyMeta {
+  const upper = code.toUpperCase();
+  if (upper in CURRENCIES) {
+    const entry = CURRENCIES[upper as keyof typeof CURRENCIES];
+    return { code: upper, name: entry.name, symbol: entry.symbol, rateToUsd: entry.rateToUsd };
+  }
+  // Unknown code — use the ISO code as both display name and symbol, with a
+  // neutral fallback rate. Live usdRates override this when available.
+  return { code: upper, name: upper, symbol: upper, rateToUsd: 1 };
+}
+
+/**
+ * Build the currency options shown in the dropdown. Canonical entries always
+ * appear; any extra currency present in the live USD rates table gets added
+ * in ISO-code order. Sorted alphabetically by code, with USD/EUR/GBP pinned
+ * on top so the most common picks stay one click away.
+ */
+export function buildCurrencyOptions(usdRates: Record<string, number> | null): CurrencyMeta[] {
+  const codes = new Set<string>(KNOWN_CODES);
+  if (usdRates) {
+    for (const code of Object.keys(usdRates)) {
+      const upper = code.toUpperCase();
+      if (/^[A-Z]{3}$/.test(upper)) codes.add(upper);
+    }
+  }
+  const pinned = ['USD', 'EUR', 'GBP'];
+  const rest = Array.from(codes)
+    .filter((c) => !pinned.includes(c))
+    .sort();
+  return [...pinned.filter((c) => codes.has(c)), ...rest].map(getCurrencyMeta);
+}
 
 export const RECORDS_STORAGE_KEY = 'colcalc_records';
 
@@ -309,9 +381,10 @@ export function parseStoredRecords(raw: string | null): CalculationRecord[] {
           numberOfKids,
           totalCosts: typeof rec.totalCosts === 'number' ? rec.totalCosts : 0,
           netBudget: typeof rec.netBudget === 'number' ? rec.netBudget : 0,
-          currency: (typeof rec.currency === 'string' && rec.currency in CURRENCIES
-            ? rec.currency
-            : 'EUR') as CurrencyCode,
+          currency:
+            typeof rec.currency === 'string' && /^[A-Za-z]{3}$/.test(rec.currency)
+              ? rec.currency.toUpperCase()
+              : 'EUR',
           baseCostsInRecordCurrency:
             typeof rec.baseCostsInRecordCurrency === 'number'
               ? rec.baseCostsInRecordCurrency
@@ -366,7 +439,7 @@ export function readShareStateFromSearch(search: string): PrefillState | null {
     if (Number.isFinite(n) && n >= 0) state.income = n;
   }
   const currency = params.get('currency');
-  if (currency && currency in CURRENCIES) state.currency = currency;
+  if (currency && /^[A-Za-z]{3}$/.test(currency)) state.currency = currency.toUpperCase();
   const city = params.get('city');
   if (city) state.city = city;
   const country = params.get('country');
@@ -388,8 +461,33 @@ export function readShareStateFromSearch(search: string): PrefillState | null {
   return state;
 }
 
-export function toDisplayCurrency(value: number, fromCurrency: CurrencyCode): number {
-  return (value * CURRENCIES[fromCurrency].rateToUsd) / CURRENCIES.EUR.rateToUsd;
+/**
+ * Convert a value from `fromCurrency` into EUR for display/sorting in the
+ * history table. Uses live USD rates when provided; otherwise falls back to
+ * the static `rateToUsd` in CURRENCIES (or 1 if the code is unknown).
+ */
+export function toDisplayCurrency(
+  value: number,
+  fromCurrency: CurrencyCode,
+  usdRates?: Record<string, number> | null,
+): number {
+  const fromMeta = getCurrencyMeta(fromCurrency);
+  const eurMeta = getCurrencyMeta('EUR');
+
+  if (usdRates) {
+    const fromRate = usdRates[fromCurrency.toLowerCase()];
+    const eurRate = usdRates[eurMeta.code.toLowerCase()];
+    if (
+      typeof fromRate === 'number' && fromRate > 0 &&
+      typeof eurRate === 'number' && eurRate > 0
+    ) {
+      // usdRates entries are USD→X (i.e. 1 USD = X local units). Convert
+      // value from `from` to USD (÷ fromRate), then USD to EUR (× eurRate).
+      return (value / fromRate) * eurRate;
+    }
+  }
+
+  return (value * fromMeta.rateToUsd) / eurMeta.rateToUsd;
 }
 
 export function getRecordIncomeDisplay(r: CalculationRecord): number {

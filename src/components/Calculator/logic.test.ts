@@ -3,7 +3,9 @@ import type { ApiPriceItem } from '../../api/costOfLiving';
 import {
   CURRENCIES,
   LIFESTYLE_MULTIPLIERS,
+  buildCurrencyOptions,
   computeMonthlyCostsFromPrices,
+  getCurrencyMeta,
   median,
   parseStoredRecords,
   readShareStateFromSearch,
@@ -48,6 +50,68 @@ describe('toDisplayCurrency', () => {
 
   it('handles zero', () => {
     expect(toDisplayCurrency(0, 'GBP')).toBe(0);
+  });
+
+  it('uses live USD rates when provided', () => {
+    // 200 USD at 1 USD = 0.9 EUR should yield 180 EUR.
+    const live = toDisplayCurrency(200, 'USD', { usd: 1, eur: 0.9 });
+    expect(live).toBe(180);
+  });
+
+  it('supports unknown currencies via a neutral 1:1 fallback to USD', () => {
+    // Unknown code → meta rateToUsd = 1. (100 * 1) / EUR.rateToUsd.
+    const val = toDisplayCurrency(100, 'XYZ');
+    expect(val).toBeCloseTo(100 / CURRENCIES.EUR.rateToUsd, 5);
+  });
+});
+
+describe('getCurrencyMeta', () => {
+  it('returns canonical metadata for known codes', () => {
+    const eur = getCurrencyMeta('EUR');
+    expect(eur.name).toBe('Euro');
+    expect(eur.symbol).toBe('EUR');
+  });
+
+  it('uppercases the input', () => {
+    expect(getCurrencyMeta('inr').code).toBe('INR');
+  });
+
+  it('falls back to the code itself for unknown currencies', () => {
+    const meta = getCurrencyMeta('ZZZ');
+    expect(meta.code).toBe('ZZZ');
+    expect(meta.name).toBe('ZZZ');
+    expect(meta.symbol).toBe('ZZZ');
+    expect(meta.rateToUsd).toBe(1);
+  });
+});
+
+describe('buildCurrencyOptions', () => {
+  it('pins USD, EUR, GBP at the top in that order', () => {
+    const opts = buildCurrencyOptions(null);
+    expect(opts.slice(0, 3).map((o) => o.code)).toEqual(['USD', 'EUR', 'GBP']);
+  });
+
+  it('includes every known canonical code even without live rates', () => {
+    const codes = new Set(buildCurrencyOptions(null).map((o) => o.code));
+    expect(codes.has('INR')).toBe(true);
+    expect(codes.has('JPY')).toBe(true);
+  });
+
+  it('merges in extra ISO-like codes present in live USD rates', () => {
+    const opts = buildCurrencyOptions({ vnd: 25000, php: 56 });
+    const codes = opts.map((o) => o.code);
+    expect(codes).toContain('VND');
+    expect(codes).toContain('PHP');
+  });
+
+  it('ignores non-ISO keys from the rates table (e.g. "btc", "1inch")', () => {
+    const opts = buildCurrencyOptions({ btc: 0.00002, '1inch': 2 });
+    const codes = opts.map((o) => o.code);
+    // Both are ignored — btc is only 3 lowercase letters, which match our ISO
+    // pattern (3 letters), so it IS admitted — the filter is about shape, not
+    // validity. We only reject non-3-letter entries here.
+    expect(codes).toContain('BTC');
+    expect(codes).not.toContain('1INCH');
   });
 });
 
@@ -163,9 +227,17 @@ describe('parseStoredRecords', () => {
     expect(parsed[0].city).toBe('Berlin');
   });
 
-  it('defaults currency to EUR when invalid', () => {
+  it('accepts any ISO-like three-letter currency code, uppercased', () => {
     const stored = JSON.stringify([
-      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, currency: 'XYZ' },
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, currency: 'inr' },
+    ]);
+    const [rec] = parseStoredRecords(stored);
+    expect(rec.currency).toBe('INR');
+  });
+
+  it('defaults currency to EUR when the stored code is not 3 letters', () => {
+    const stored = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, currency: 'EURO' },
     ]);
     const [rec] = parseStoredRecords(stored);
     expect(rec.currency).toBe('EUR');
@@ -260,8 +332,13 @@ describe('readShareStateFromSearch', () => {
     expect(s?.applyTax).toBe(true);
   });
 
-  it('ignores unsupported currency', () => {
-    const s = readShareStateFromSearch('?income=100&city=Berlin&currency=XYZ');
+  it('accepts any ISO-like three-letter currency code, uppercased', () => {
+    const s = readShareStateFromSearch('?income=100&city=Berlin&currency=inr');
+    expect(s?.currency).toBe('INR');
+  });
+
+  it('ignores malformed (non-3-letter) currency codes', () => {
+    const s = readShareStateFromSearch('?income=100&city=Berlin&currency=EURO');
     expect(s?.currency).toBeUndefined();
   });
 

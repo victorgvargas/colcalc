@@ -23,11 +23,6 @@ import {
 import { fetchCities, type CityOption } from '../../api/costOfLiving';
 import { getUsdRates, getUsdToCurrencyRate } from '../../api/exchangeRates';
 
-/** Currency codes the Cost of Living Calculator accepts directly. */
-const CALCULATOR_CURRENCIES = new Set([
-  'USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD',
-]);
-
 export type CalculatorHandoff = {
   income: number;
   currency: string;
@@ -38,8 +33,9 @@ export type CalculatorHandoff = {
 
 /**
  * Map a rel.tax result into a payload the Cost of Living Calculator accepts.
- * When rel.tax returns a currency the calculator doesn't support, convert to EUR
- * via the USD-denominated rate table.
+ * The calculator now accepts any ISO-style currency code, so we pass through
+ * `resultCurrency` directly when live USD rates know about it. Only fall
+ * back to converting to EUR when the code is entirely unknown.
  */
 export function buildCalculatorHandoff(input: {
   monthlyNet: number;
@@ -51,17 +47,20 @@ export function buildCalculatorHandoff(input: {
   const { monthlyNet, resultCurrency, usdRates, city, country } = input;
   if (!Number.isFinite(monthlyNet) || monthlyNet <= 0) return null;
 
-  if (CALCULATOR_CURRENCIES.has(resultCurrency)) {
+  const hasLiveRate =
+    !!usdRates && typeof usdRates[resultCurrency.toLowerCase()] === 'number';
+
+  if (hasLiveRate) {
     return {
       income: Math.round(monthlyNet * 100) / 100,
-      currency: resultCurrency,
+      currency: resultCurrency.toUpperCase(),
       city: city.trim() || undefined,
       country: country?.trim() || undefined,
       currencyConverted: false,
     };
   }
 
-  // Convert result -> USD -> EUR using the live rate table.
+  // Unknown code — convert via USD to EUR so the user still gets a usable value.
   const usdPerResult = 1 / getUsdToCurrencyRate(usdRates, resultCurrency, Number.NaN);
   const eurPerUsd = getUsdToCurrencyRate(usdRates, 'EUR', Number.NaN);
   if (!Number.isFinite(usdPerResult) || !Number.isFinite(eurPerUsd)) return null;

@@ -8,7 +8,7 @@ import {
   Legend,
   Cell,
 } from 'recharts';
-import { CURRENCIES, type CalculationRecord } from './logic';
+import { getCurrencyMeta, type CalculationRecord, type CurrencyCode } from './logic';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AA46BE', '#FF6F91'];
 
@@ -19,7 +19,7 @@ type Props = {
   /** When a saved record is selected, show its city/country alongside the heading. */
   selectedRecord?: CalculationRecord | null;
   /** Currency to render inside tooltip (the data values are already converted). */
-  displayCurrency?: keyof typeof CURRENCIES;
+  displayCurrency?: CurrencyCode;
 };
 
 const ExpenditureBreakdown: React.FC<Props> = ({
@@ -60,7 +60,7 @@ const ExpenditureBreakdown: React.FC<Props> = ({
                 </Pie>
                 <Tooltip
                   formatter={(value: number, name: string) => [
-                    `${Number(value).toFixed(2)} ${CURRENCIES[displayCurrency].symbol}`,
+                    `${Number(value).toFixed(2)} ${getCurrencyMeta(displayCurrency).symbol}`,
                     name,
                   ]}
                   contentStyle={{ maxWidth: '100%' }}
