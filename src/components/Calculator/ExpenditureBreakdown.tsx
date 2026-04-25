@@ -1,5 +1,6 @@
 import React from 'react';
-import { Box, Card, CardContent, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer,
   PieChart,
@@ -27,17 +28,42 @@ const ExpenditureBreakdown: React.FC<Props> = ({
   selectedRecord = null,
   displayCurrency = 'EUR',
 }) => {
+  const navigate = useNavigate();
+
+  const handleCompare = () => {
+    if (!selectedRecord) return;
+    const params = new URLSearchParams();
+    params.set('city1', selectedRecord.city);
+    if (selectedRecord.country) params.set('country1', selectedRecord.country);
+    navigate(`/cities-comparison?${params.toString()}`);
+  };
+
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent sx={{ height: 360 }}>
-        <Typography variant="h6" gutterBottom>
-          Expenditure breakdown
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 1,
+            mb: 1,
+          }}
+        >
+          <Typography variant="h6">
+            Expenditure breakdown
+            {selectedRecord && (
+              <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                — {selectedRecord.city}, {selectedRecord.country}
+              </Typography>
+            )}
+          </Typography>
           {selectedRecord && (
-            <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-              — {selectedRecord.city}, {selectedRecord.country}
-            </Typography>
+            <Button size="small" variant="text" onClick={handleCompare}>
+              Compare with another city →
+            </Button>
           )}
-        </Typography>
+        </Box>
         {data.length ? (
           <Box sx={{ height: '85%', minHeight: 0, overflow: 'hidden' }}>
             <ResponsiveContainer width="100%" height="100%">

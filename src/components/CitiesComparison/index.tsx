@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Autocomplete,
   Box,
@@ -28,15 +29,17 @@ import {
   type CityPricesResult,
 } from '../../api/costOfLiving';
 import { getUsdRates, getUsdToCurrencyRate } from '../../api/exchangeRates';
+import {
+  MAX_CITIES,
+  MIN_CITIES,
+  readComparisonEntriesFromSearch,
+  type CityEntry,
+} from './logic';
 
-const MIN_CITIES = 2;
-const MAX_CITIES = 5;
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AA46BE'];
 const TOTAL_CATEGORY_KEY = 'Total costs';
 const CHILDCARE_CATEGORY_KEY = 'Childcare';
 const FALLBACK_EUR_PER_USD = 1 / 1.08;
-
-type CityEntry = { cityName: string; countryName: string };
 
 type CityComparisonResult = {
   label: string;
@@ -45,14 +48,36 @@ type CityComparisonResult = {
 };
 
 const CitiesComparison: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const prefillConsumedRef = useRef(false);
+
   const [allCities, setAllCities] = useState<CityOption[]>([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
   const citiesLoadedRef = useRef(false);
 
-  const [entries, setEntries] = useState<CityEntry[]>([
-    { cityName: '', countryName: '' },
-    { cityName: '', countryName: '' },
-  ]);
+  const urlPrefill = readComparisonEntriesFromSearch(location.search);
+
+  const [entries, setEntries] = useState<CityEntry[]>(() => {
+    if (urlPrefill && urlPrefill.length > 0) {
+      // Pad to MIN_CITIES so the form always shows at least two rows.
+      const list = [...urlPrefill];
+      while (list.length < MIN_CITIES) list.push({ cityName: '', countryName: '' });
+      return list;
+    }
+    return [
+      { cityName: '', countryName: '' },
+      { cityName: '', countryName: '' },
+    ];
+  });
+
+  useEffect(() => {
+    // Consume URL params once so refreshing doesn't re-prefill.
+    if (!prefillConsumedRef.current && urlPrefill) {
+      prefillConsumedRef.current = true;
+      navigate(location.pathname, { replace: true });
+    }
+  }, [urlPrefill, location.pathname, navigate]);
   const [compareLoading, setCompareLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [comparisonResults, setComparisonResults] = useState<CityComparisonResult[]>([]);
@@ -90,6 +115,26 @@ const CitiesComparison: React.FC = () => {
   useEffect(() => {
     loadCities();
   }, [loadCities]);
+
+  // When cities load, backfill country for any entry that has a city but no
+  // country (happens when /cities-comparison was opened via a CTA that only
+  // had `city1=...` in the URL, or the user typed a known city).
+  useEffect(() => {
+    if (!allCities.length) return;
+    setEntries((prev) => {
+      let changed = false;
+      const next = prev.map((e) => {
+        if (!e.cityName.trim() || e.countryName.trim()) return e;
+        const found = allCities.find(
+          (c) => c.cityName.toLowerCase() === e.cityName.trim().toLowerCase(),
+        );
+        if (!found) return e;
+        changed = true;
+        return { ...e, countryName: found.countryName };
+      });
+      return changed ? next : prev;
+    });
+  }, [allCities]);
 
   const validEntries = useMemo(
     () =>
