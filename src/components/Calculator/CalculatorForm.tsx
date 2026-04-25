@@ -38,6 +38,10 @@ type Props = {
   setCountry: (v: string) => void;
   numberOfKids: number;
   setNumberOfKids: (v: number) => void;
+  numberOfAdults: number;
+  setNumberOfAdults: (v: number) => void;
+  partnerIncome: string;
+  setPartnerIncome: (v: string) => void;
   rentLocation: RentLocation;
   setRentLocation: (v: RentLocation) => void;
   lifestyle: LifestyleLevel;
@@ -86,6 +90,10 @@ const CalculatorForm: React.FC<Props> = ({
   setCountry,
   numberOfKids,
   setNumberOfKids,
+  numberOfAdults,
+  setNumberOfAdults,
+  partnerIncome,
+  setPartnerIncome,
   rentLocation,
   setRentLocation,
   lifestyle,
@@ -210,6 +218,27 @@ const CalculatorForm: React.FC<Props> = ({
               }}
               inputProps={{ min: 0, step: 1 }}
               helperText="Childcare cost × this number"
+            />
+            <TextField
+              label="Adults in household"
+              type="number"
+              fullWidth
+              value={numberOfAdults}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                setNumberOfAdults(Number.isNaN(n) || n < 1 ? 1 : n);
+              }}
+              inputProps={{ min: 1, step: 1 }}
+              helperText="Metadata only; costs unchanged"
+            />
+            <TextField
+              label="Partner income"
+              type="number"
+              fullWidth
+              value={partnerIncome}
+              onChange={(e) => setPartnerIncome(e.target.value)}
+              inputProps={{ min: 0, step: 100 }}
+              helperText="Adds to household income"
             />
             <TextField
               select

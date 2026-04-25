@@ -330,3 +330,56 @@ describe('<Calculator /> data provenance', () => {
     });
   });
 });
+
+describe('<Calculator /> household composition', () => {
+  it('partner income adds to household income so net budget goes up', async () => {
+    const user = userEvent.setup();
+    renderCalculator();
+
+    await user.type(screen.getByLabelText(/Monthly Income/i), '5000');
+    await user.type(screen.getByRole('combobox', { name: /City/i }), 'Berlin');
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect((screen.getByLabelText(/Country/i) as HTMLInputElement).value).toBe('Germany'),
+    );
+    await user.click(screen.getByRole('button', { name: /Calculate/i }));
+
+    // Remember the net budget before partner income is added.
+    const before = await screen.findByText(/Net budget:/i);
+    const beforeValue = parseFloat(before.textContent!.replace(/[^0-9.-]/g, ''));
+
+    // Add 2000 of partner income; the live preview should update without re-calculating.
+    await user.type(screen.getByLabelText(/Partner income/i), '2000');
+
+    await waitFor(() => {
+      const after = screen.getByText(/Net budget:/i);
+      const afterValue = parseFloat(after.textContent!.replace(/[^0-9.-]/g, ''));
+      expect(afterValue).toBeGreaterThan(beforeValue);
+    });
+  });
+
+  it('Adults-in-household defaults to 1 and is preserved on the saved record', async () => {
+    const user = userEvent.setup();
+    renderCalculator();
+
+    const adults = screen.getByLabelText(/Adults in household/i) as HTMLInputElement;
+    expect(adults.value).toBe('1');
+    // MUI's number input doesn't always honor user.clear reliably; fireEvent is
+    // the right tool for deterministic numeric assignment in tests.
+    fireEvent.change(adults, { target: { value: '2' } });
+    expect(adults.value).toBe('2');
+
+    await user.type(screen.getByLabelText(/Monthly Income/i), '5000');
+    await user.type(screen.getByRole('combobox', { name: /City/i }), 'Berlin');
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect((screen.getByLabelText(/Country/i) as HTMLInputElement).value).toBe('Germany'),
+    );
+    await user.click(screen.getByRole('button', { name: /Calculate/i }));
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem('colcalc_records')!);
+      expect(stored[0].numberOfAdults).toBe(2);
+    });
+  });
+});

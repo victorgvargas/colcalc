@@ -125,6 +125,13 @@ export type CalculationRecord = {
   lifestyle?: LifestyleLevel;
   /** Number of price points the calculation was based on. */
   pricePointCount?: number;
+  /** Adults in the household. Default 1. Metadata only; does not scale costs. */
+  numberOfAdults?: number;
+  /**
+   * Monthly income contributed by a partner, in the record's currency.
+   * Added to `income` when computing net budget.
+   */
+  partnerIncome?: number;
 };
 
 export type PrefillState = {
@@ -136,6 +143,8 @@ export type PrefillState = {
   rentLocation?: RentLocation;
   applyTax?: boolean;
   lifestyle?: LifestyleLevel;
+  numberOfAdults?: number;
+  partnerIncome?: number;
 };
 
 const PRICE_KEYS = [
@@ -413,6 +422,16 @@ export function parseStoredRecords(raw: string | null): CalculationRecord[] {
             typeof rec.pricePointCount === 'number' && rec.pricePointCount >= 0
               ? Math.floor(rec.pricePointCount)
               : undefined,
+          numberOfAdults:
+            typeof rec.numberOfAdults === 'number' && rec.numberOfAdults >= 1
+              ? Math.floor(rec.numberOfAdults)
+              : undefined,
+          partnerIncome:
+            typeof rec.partnerIncome === 'number' &&
+            Number.isFinite(rec.partnerIncome) &&
+            rec.partnerIncome >= 0
+              ? rec.partnerIncome
+              : undefined,
         };
       })
       .filter((r) => r.city && r.country);
@@ -430,6 +449,8 @@ const SHARE_PARAM_KEYS = [
   'rent',
   'tax',
   'lifestyle',
+  'adults',
+  'partner',
 ] as const;
 
 export function readShareStateFromSearch(search: string): PrefillState | null {
@@ -462,6 +483,16 @@ export function readShareStateFromSearch(search: string): PrefillState | null {
   const lifestyle = params.get('lifestyle');
   if (lifestyle === 'frugal' || lifestyle === 'average' || lifestyle === 'comfortable') {
     state.lifestyle = lifestyle;
+  }
+  const adults = params.get('adults');
+  if (adults != null) {
+    const n = parseInt(adults, 10);
+    if (Number.isFinite(n) && n >= 1) state.numberOfAdults = n;
+  }
+  const partner = params.get('partner');
+  if (partner != null) {
+    const n = Number(partner);
+    if (Number.isFinite(n) && n >= 0) state.partnerIncome = n;
   }
 
   return state;

@@ -531,6 +531,58 @@ describe('mergeImportedRecords', () => {
   });
 });
 
+describe('parseStoredRecords — household fields', () => {
+  it('parses numberOfAdults when present and >= 1', () => {
+    const stored = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, numberOfAdults: 2 },
+    ]);
+    expect(parseStoredRecords(stored)[0].numberOfAdults).toBe(2);
+  });
+
+  it('drops numberOfAdults values < 1 or non-numeric', () => {
+    const a = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, numberOfAdults: 0 },
+    ]);
+    const b = JSON.stringify([
+      { id: 2, city: 'Paris', country: 'France', income: 1, totalCosts: 0, netBudget: 1, numberOfAdults: 'two' },
+    ]);
+    expect(parseStoredRecords(a)[0].numberOfAdults).toBeUndefined();
+    expect(parseStoredRecords(b)[0].numberOfAdults).toBeUndefined();
+  });
+
+  it('parses partnerIncome when non-negative finite', () => {
+    const stored = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, partnerIncome: 2500 },
+    ]);
+    expect(parseStoredRecords(stored)[0].partnerIncome).toBe(2500);
+  });
+
+  it('drops partnerIncome values that are negative or not finite', () => {
+    const a = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, partnerIncome: -100 },
+    ]);
+    const b = JSON.stringify([
+      { id: 2, city: 'Paris', country: 'France', income: 1, totalCosts: 0, netBudget: 1, partnerIncome: Number.NaN },
+    ]);
+    expect(parseStoredRecords(a)[0].partnerIncome).toBeUndefined();
+    expect(parseStoredRecords(b)[0].partnerIncome).toBeUndefined();
+  });
+});
+
+describe('readShareStateFromSearch — household params', () => {
+  it('reads adults (>= 1) and partner (>= 0)', () => {
+    const s = readShareStateFromSearch('?city=Berlin&adults=2&partner=1500');
+    expect(s?.numberOfAdults).toBe(2);
+    expect(s?.partnerIncome).toBe(1500);
+  });
+
+  it('ignores adults < 1 and non-numeric partner', () => {
+    const s = readShareStateFromSearch('?city=Berlin&adults=0&partner=abc');
+    expect(s?.numberOfAdults).toBeUndefined();
+    expect(s?.partnerIncome).toBeUndefined();
+  });
+});
+
 describe('parseStoredRecords — pricePointCount', () => {
   it('preserves a valid pricePointCount', () => {
     const stored = JSON.stringify([

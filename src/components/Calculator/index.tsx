@@ -61,6 +61,12 @@ const Calculator: React.FC = () => {
   const [city, setCity] = useState<string>(initialPrefill?.city ?? '');
   const [country, setCountry] = useState<string>(initialPrefill?.country ?? '');
   const [numberOfKids, setNumberOfKids] = useState<number>(initialPrefill?.numberOfKids ?? 0);
+  const [numberOfAdults, setNumberOfAdults] = useState<number>(
+    initialPrefill?.numberOfAdults ?? 1,
+  );
+  const [partnerIncome, setPartnerIncome] = useState<string>(
+    initialPrefill?.partnerIncome != null ? String(initialPrefill.partnerIncome) : '',
+  );
   const [rentLocation, setRentLocation] = useState<RentLocation>(
     initialPrefill?.rentLocation ?? 'center',
   );
@@ -220,12 +226,15 @@ const Calculator: React.FC = () => {
   const eurPerUsdForChart = getCurrencyPerUsd('EUR');
   const totalCostsInCurrency = totalCostsUsd * effectiveCurrencyPerUsd;
 
-  const grossIncomeValue = Number(income) || 0;
+  const primaryIncomeValue = Number(income) || 0;
+  const partnerIncomeValue = Math.max(0, Number(partnerIncome) || 0);
+  const grossIncomeValue = primaryIncomeValue + partnerIncomeValue;
   const netIncomeAfterTax = useMemo(() => {
     if (!applyTax || taxEffectiveRate == null) return grossIncomeValue;
     const rate = Math.max(0, Math.min(1, taxEffectiveRate));
-    return grossIncomeValue * (1 - rate);
-  }, [applyTax, grossIncomeValue, taxEffectiveRate]);
+    // Partner income is treated as already-net (see handleSubmit comment).
+    return primaryIncomeValue * (1 - rate) + partnerIncomeValue;
+  }, [applyTax, grossIncomeValue, taxEffectiveRate, primaryIncomeValue, partnerIncomeValue]);
 
   const netBudget = useMemo(
     () => netIncomeAfterTax - totalCostsInCurrency,
@@ -268,11 +277,13 @@ const Calculator: React.FC = () => {
     event.preventDefault();
     setError(null);
 
-    const numericIncome = Number(income);
-    if (!numericIncome || !city.trim() || !country.trim()) {
+    const primaryIncome = Number(income);
+    if (!primaryIncome || !city.trim() || !country.trim()) {
       setError('Please provide a valid income, city, and country.');
       return;
     }
+    const partnerIncomeNum = Math.max(0, Number(partnerIncome) || 0);
+    const householdIncome = primaryIncome + partnerIncomeNum;
 
     setIsLoading(true);
 
@@ -294,7 +305,8 @@ const Calculator: React.FC = () => {
             // rel.tax wants annual income in local currency. We pass the user's
             // income × 12 in their chosen currency; the effective rate we use
             // is roughly invariant to the nominal at a given bracket.
-            const annualIncome = numericIncome * 12;
+            // rel.tax is per individual, so we send the primary income only.
+            const annualIncome = primaryIncome * 12;
             const calc = await fetchIncomeTax(code, annualIncome);
             const rate = calc.rates?.effectiveTaxRate;
             if (typeof rate === 'number' && Number.isFinite(rate) && rate >= 0) {
@@ -347,14 +359,20 @@ const Calculator: React.FC = () => {
         return { name, value: baseValueUsd * currencyPerUsdRate };
       });
 
+      // When tax applies, we shave the primary income by the effective rate.
+      // Partner income is treated as already-net (so two-earner households can
+      // enter gross for themselves and net for their partner — documented in
+      // the form's helper text).
       const effectiveNetIncome =
-        resolvedTaxRate != null ? numericIncome * (1 - resolvedTaxRate) : numericIncome;
+        resolvedTaxRate != null
+          ? primaryIncome * (1 - resolvedTaxRate) + partnerIncomeNum
+          : householdIncome;
 
       const record: CalculationRecord = {
         id: Date.now(),
         city: city.trim(),
         country: country.trim(),
-        income: numericIncome,
+        income: primaryIncome,
         numberOfKids: kids,
         totalCosts: totalCostsInRecordCurrency,
         netBudget: effectiveNetIncome - totalCostsInRecordCurrency,
@@ -365,6 +383,8 @@ const Calculator: React.FC = () => {
         taxRate: resolvedTaxRate ?? undefined,
         lifestyle,
         pricePointCount,
+        numberOfAdults,
+        partnerIncome: partnerIncomeNum > 0 ? partnerIncomeNum : undefined,
       };
 
       addRecord(record);
@@ -387,6 +407,11 @@ const Calculator: React.FC = () => {
     params.set('city', city.trim());
     if (country.trim()) params.set('country', country.trim());
     if (numberOfKids > 0) params.set('kids', String(numberOfKids));
+    if (numberOfAdults !== 1) params.set('adults', String(numberOfAdults));
+    const partnerNum = Number(partnerIncome);
+    if (Number.isFinite(partnerNum) && partnerNum > 0) {
+      params.set('partner', String(partnerNum));
+    }
     if (rentLocation !== 'center') params.set('rent', rentLocation);
     if (lifestyle !== 'average') params.set('lifestyle', lifestyle);
     if (applyTax) params.set('tax', '1');
@@ -395,7 +420,19 @@ const Calculator: React.FC = () => {
         ? `${window.location.origin}${location.pathname}`
         : location.pathname;
     return `${base}?${params.toString()}`;
-  }, [income, incomeCurrency, city, country, numberOfKids, rentLocation, lifestyle, applyTax, location.pathname]);
+  }, [
+    income,
+    incomeCurrency,
+    city,
+    country,
+    numberOfKids,
+    numberOfAdults,
+    partnerIncome,
+    rentLocation,
+    lifestyle,
+    applyTax,
+    location.pathname,
+  ]);
 
   const handleShare = useCallback(async () => {
     const url = buildShareUrl();
@@ -428,6 +465,8 @@ const Calculator: React.FC = () => {
     setCity('');
     setCountry('');
     setNumberOfKids(0);
+    setNumberOfAdults(1);
+    setPartnerIncome('');
     setRentLocation('center');
     setLifestyle('average');
     setPrices([]);
@@ -536,6 +575,10 @@ const Calculator: React.FC = () => {
         setCountry={setCountry}
         numberOfKids={numberOfKids}
         setNumberOfKids={setNumberOfKids}
+        numberOfAdults={numberOfAdults}
+        setNumberOfAdults={setNumberOfAdults}
+        partnerIncome={partnerIncome}
+        setPartnerIncome={setPartnerIncome}
         rentLocation={rentLocation}
         setRentLocation={setRentLocation}
         lifestyle={lifestyle}
