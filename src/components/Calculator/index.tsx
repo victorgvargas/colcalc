@@ -21,11 +21,9 @@ import EditRecordDialog from './EditRecordDialog';
 import ExpenditureBreakdown from './ExpenditureBreakdown';
 import HistoryTable from './HistoryTable';
 import {
-  RECORDS_STORAGE_KEY,
   buildCurrencyOptions,
   computeMonthlyCostsFromPrices,
   getCurrencyMeta,
-  parseStoredRecords,
   readShareStateFromSearch,
   toDisplayCurrency,
   type CalculationRecord,
@@ -34,6 +32,7 @@ import {
   type PrefillState,
   type RentLocation,
 } from './logic';
+import { useCalculationRecords } from './useCalculationRecords';
 
 const Calculator: React.FC = () => {
   const location = useLocation();
@@ -109,26 +108,7 @@ const Calculator: React.FC = () => {
       cancelled = true;
     };
   }, []);
-  const [records, setRecords] = useState<CalculationRecord[]>(() =>
-    typeof localStorage !== 'undefined'
-      ? parseStoredRecords(localStorage.getItem(RECORDS_STORAGE_KEY))
-      : [],
-  );
-
-  useEffect(() => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(RECORDS_STORAGE_KEY, JSON.stringify(records));
-    }
-  }, [records]);
-
-  useEffect(() => {
-    const handler = (e: StorageEvent) => {
-      if (e.key !== RECORDS_STORAGE_KEY) return;
-      setRecords(parseStoredRecords(localStorage.getItem(RECORDS_STORAGE_KEY)));
-    };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
-  }, []);
+  const { records, addRecord, deleteRecord, updateRecord } = useCalculationRecords();
 
   useEffect(() => {
     let cancelled = false;
@@ -384,7 +364,7 @@ const Calculator: React.FC = () => {
         pricePointCount,
       };
 
-      setRecords((prev) => [record, ...prev]);
+      addRecord(record);
       setSelectedRecordId(record.id);
     } catch (err) {
       const message =
@@ -455,9 +435,10 @@ const Calculator: React.FC = () => {
     setTaxError(null);
   };
 
-  const handleDeleteRecord = useCallback((id: number) => {
-    setRecords((prev) => prev.filter((r) => r.id !== id));
-  }, []);
+  const handleDeleteRecord = useCallback(
+    (id: number) => deleteRecord(id),
+    [deleteRecord],
+  );
 
   const handleEditRecord = useCallback((record: CalculationRecord) => {
     setEditModalRecord(record);
@@ -466,39 +447,36 @@ const Calculator: React.FC = () => {
   const handleEditModalSave = useCallback(
     ({ income: newIncome, numberOfKids: newKids }: { income: number; numberOfKids: number }) => {
       if (!editModalRecord) return;
-      setRecords((prev) =>
-        prev.map((r) => {
-          if (r.id !== editModalRecord.id) return r;
-          const hasChildcareData =
-            typeof r.baseCostsInRecordCurrency === 'number' &&
-            typeof r.childcarePerChildInRecordCurrency === 'number';
-          const newTotalCosts = hasChildcareData
-            ? r.baseCostsInRecordCurrency! + newKids * r.childcarePerChildInRecordCurrency!
-            : r.totalCosts;
-          const effectiveIncome =
-            typeof r.taxRate === 'number' ? newIncome * (1 - r.taxRate) : newIncome;
-          const newNetBudget = effectiveIncome - newTotalCosts;
-          const costBreakdown =
-            r.costBreakdown?.length && typeof r.childcarePerChildInRecordCurrency === 'number'
-              ? r.costBreakdown.map((item) =>
-                  item.name === 'Childcare'
-                    ? { ...item, value: newKids * r.childcarePerChildInRecordCurrency! }
-                    : item,
-                )
-              : r.costBreakdown;
-          return {
-            ...r,
-            income: newIncome,
-            numberOfKids: newKids,
-            totalCosts: newTotalCosts,
-            netBudget: newNetBudget,
-            costBreakdown,
-          };
-        }),
-      );
+      updateRecord(editModalRecord.id, (r) => {
+        const hasChildcareData =
+          typeof r.baseCostsInRecordCurrency === 'number' &&
+          typeof r.childcarePerChildInRecordCurrency === 'number';
+        const newTotalCosts = hasChildcareData
+          ? r.baseCostsInRecordCurrency! + newKids * r.childcarePerChildInRecordCurrency!
+          : r.totalCosts;
+        const effectiveIncome =
+          typeof r.taxRate === 'number' ? newIncome * (1 - r.taxRate) : newIncome;
+        const newNetBudget = effectiveIncome - newTotalCosts;
+        const costBreakdown =
+          r.costBreakdown?.length && typeof r.childcarePerChildInRecordCurrency === 'number'
+            ? r.costBreakdown.map((item) =>
+                item.name === 'Childcare'
+                  ? { ...item, value: newKids * r.childcarePerChildInRecordCurrency! }
+                  : item,
+              )
+            : r.costBreakdown;
+        return {
+          ...r,
+          income: newIncome,
+          numberOfKids: newKids,
+          totalCosts: newTotalCosts,
+          netBudget: newNetBudget,
+          costBreakdown,
+        };
+      });
       setEditModalRecord(null);
     },
-    [editModalRecord],
+    [editModalRecord, updateRecord],
   );
 
   return (
