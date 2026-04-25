@@ -10,6 +10,8 @@ import PurchasingPower from './components/PurchasingPower/index.tsx';
 import TaxCalculator from './components/TaxCalculator/index.tsx';
 import CityPage from './components/CityPage/index.tsx';
 import ComparisonPage from './components/ComparisonPage/index.tsx';
+import AuthCallback from './components/Auth/AuthCallback.tsx';
+import { AuthProvider } from './auth/AuthContext.tsx';
 
 const router = createBrowserRouter([
   {
@@ -22,6 +24,7 @@ const router = createBrowserRouter([
       { path: 'tax-calculator', Component: TaxCalculator },
       { path: 'cost-of-living/:citySlug', Component: CityPage },
       { path: 'compare/:pairSlug', Component: ComparisonPage },
+      { path: 'auth/callback', Component: AuthCallback },
     ],
   },
 ]);
@@ -29,8 +32,10 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HelmetProvider>
-      <RouterProvider router={router} />
-      <Analytics />
+      <AuthProvider>
+        <RouterProvider router={router} />
+        <Analytics />
+      </AuthProvider>
     </HelmetProvider>
   </StrictMode>,
 )

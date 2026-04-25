@@ -36,6 +36,7 @@ import {
   type RentLocation,
 } from './logic';
 import { useCalculationRecords } from './useCalculationRecords';
+import { useRecordsSync } from './useRecordsSync';
 
 const Calculator: React.FC = () => {
   const location = useLocation();
@@ -117,7 +118,18 @@ const Calculator: React.FC = () => {
       cancelled = true;
     };
   }, []);
-  const { records, setRecords, addRecord, deleteRecord, updateRecord } = useCalculationRecords();
+  const {
+    records,
+    metaById,
+    tombstones,
+    setRecords,
+    addRecord,
+    deleteRecord,
+    updateRecord,
+    applySyncResult,
+  } = useCalculationRecords();
+
+  useRecordsSync({ records, metaById, tombstones, applySyncResult });
 
   useEffect(() => {
     let cancelled = false;

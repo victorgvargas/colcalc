@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router';
 import styled from 'styled-components';
+import LoginDialog from '../Auth/LoginDialog';
+import { useAuth } from '../../auth/AuthContext';
 
 const StyledSidebar = styled.div`
     width: 250px;
@@ -86,6 +89,42 @@ const DonateSection = styled.div`
   border-top: 1px solid #ddd;
 `;
 
+const AccountSection = styled.div`
+  flex-shrink: 0;
+  padding-top: 12px;
+  border-top: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const AccountEmail = styled.div`
+  font-size: 0.8rem;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const AccountButton = styled.button`
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  &:hover {
+    background: #f0f0f0;
+  }
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+`;
+
 const DonateLink = styled.a`
   display: flex;
   align-items: center;
@@ -113,6 +152,9 @@ type SidebarProps = {
 };
 
 const Sidebar = ({ sections }: SidebarProps) => {
+  const { user, status, logout } = useAuth();
+  const [loginOpen, setLoginOpen] = useState(false);
+
   return (
     <StyledSidebar>
         <SidebarHeader>
@@ -129,6 +171,24 @@ const Sidebar = ({ sections }: SidebarProps) => {
             </SidebarSection>
           ))}
         </SidebarNav>
+        <AccountSection>
+          {status === 'authenticated' && user ? (
+            <>
+              <AccountEmail title={user.email}>{user.email}</AccountEmail>
+              <AccountButton type="button" onClick={() => void logout()}>
+                Sign out
+              </AccountButton>
+            </>
+          ) : (
+            <AccountButton
+              type="button"
+              onClick={() => setLoginOpen(true)}
+              disabled={status === 'loading'}
+            >
+              {status === 'loading' ? 'Loading…' : 'Sign in to sync'}
+            </AccountButton>
+          )}
+        </AccountSection>
         <DonateSection>
           <DonateLink
             href="https://www.paypal.me/VIctorVargas997"
@@ -138,6 +198,7 @@ const Sidebar = ({ sections }: SidebarProps) => {
             Donate via PayPal
           </DonateLink>
         </DonateSection>
+        <LoginDialog open={loginOpen} onClose={() => setLoginOpen(false)} />
     </StyledSidebar>
   );
 };
