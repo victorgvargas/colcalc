@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://colcalc-be.vercel.app/api/:path*" }
+  ]
+}
