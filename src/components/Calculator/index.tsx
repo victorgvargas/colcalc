@@ -23,6 +23,7 @@ import {
   toDisplayCurrency,
   type CalculationRecord,
   type CurrencyCode,
+  type LifestyleLevel,
   type PrefillState,
   type RentLocation,
 } from './logic';
@@ -53,6 +54,9 @@ const Calculator: React.FC = () => {
   const [numberOfKids, setNumberOfKids] = useState<number>(initialPrefill?.numberOfKids ?? 0);
   const [rentLocation, setRentLocation] = useState<RentLocation>(
     initialPrefill?.rentLocation ?? 'center',
+  );
+  const [lifestyle, setLifestyle] = useState<LifestyleLevel>(
+    initialPrefill?.lifestyle ?? 'average',
   );
   const [applyTax, setApplyTax] = useState<boolean>(initialPrefill?.applyTax ?? false);
   const shouldAutoRunRef = useRef<boolean>(
@@ -174,8 +178,8 @@ const Calculator: React.FC = () => {
   }, [city, allCities]);
 
   const { totalUsd: rawTotalUsd, byCategory: rawByCategory } = useMemo(
-    () => computeMonthlyCostsFromPrices(prices, rentLocation),
-    [prices, rentLocation],
+    () => computeMonthlyCostsFromPrices(prices, rentLocation, lifestyle),
+    [prices, rentLocation, lifestyle],
   );
 
   const { totalUsd: totalCostsUsd, byCategory: monthlyByCategory } = useMemo(() => {
@@ -303,7 +307,7 @@ const Calculator: React.FC = () => {
       setPrices(fetchedPrices);
 
       const { totalUsd: computedTotalCostsUsd, byCategory: computedByCategory } =
-        computeMonthlyCostsFromPrices(fetchedPrices, rentLocation);
+        computeMonthlyCostsFromPrices(fetchedPrices, rentLocation, lifestyle);
       const childcarePerChildUsd = computedByCategory.get('Childcare') ?? 0;
       const kids = Math.max(0, numberOfKids);
       const adjustedTotalUsd =
@@ -340,6 +344,7 @@ const Calculator: React.FC = () => {
         childcarePerChildInRecordCurrency,
         costBreakdown,
         taxRate: resolvedTaxRate ?? undefined,
+        lifestyle,
       };
 
       setRecords((prev) => [record, ...prev]);
@@ -363,13 +368,14 @@ const Calculator: React.FC = () => {
     if (country.trim()) params.set('country', country.trim());
     if (numberOfKids > 0) params.set('kids', String(numberOfKids));
     if (rentLocation !== 'center') params.set('rent', rentLocation);
+    if (lifestyle !== 'average') params.set('lifestyle', lifestyle);
     if (applyTax) params.set('tax', '1');
     const base =
       typeof window !== 'undefined'
         ? `${window.location.origin}${location.pathname}`
         : location.pathname;
     return `${base}?${params.toString()}`;
-  }, [income, incomeCurrency, city, country, numberOfKids, rentLocation, applyTax, location.pathname]);
+  }, [income, incomeCurrency, city, country, numberOfKids, rentLocation, lifestyle, applyTax, location.pathname]);
 
   const handleShare = useCallback(async () => {
     const url = buildShareUrl();
@@ -402,6 +408,8 @@ const Calculator: React.FC = () => {
     setCity('');
     setCountry('');
     setNumberOfKids(0);
+    setRentLocation('center');
+    setLifestyle('average');
     setPrices([]);
     setError(null);
     setApplyTax(false);
@@ -483,6 +491,8 @@ const Calculator: React.FC = () => {
         setNumberOfKids={setNumberOfKids}
         rentLocation={rentLocation}
         setRentLocation={setRentLocation}
+        lifestyle={lifestyle}
+        setLifestyle={setLifestyle}
         applyTax={applyTax}
         setApplyTax={setApplyTax}
         allCities={allCities}

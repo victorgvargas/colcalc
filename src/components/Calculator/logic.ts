@@ -16,6 +16,23 @@ export const RECORDS_STORAGE_KEY = 'colcalc_records';
 
 export type RentLocation = 'center' | 'outskirts';
 
+export type LifestyleLevel = 'frugal' | 'average' | 'comfortable';
+
+/**
+ * Lifestyle multipliers tune the heuristics that turn individual price points
+ * into monthly spend. "Average" is the historical baseline; "frugal" and
+ * "comfortable" scale markets and transport up/down. All other categories
+ * (rent, utilities, internet, childcare) are unaffected.
+ */
+export const LIFESTYLE_MULTIPLIERS: Record<
+  LifestyleLevel,
+  { marketsBasket: number; transportMonthly: number }
+> = {
+  frugal: { marketsBasket: 3, transportMonthly: 1.0 },
+  average: { marketsBasket: 4, transportMonthly: 1.5 },
+  comfortable: { marketsBasket: 5, transportMonthly: 2.0 },
+};
+
 export type CalculationRecord = {
   id: number;
   city: string;
@@ -32,6 +49,8 @@ export type CalculationRecord = {
   costBreakdown?: { name: string; value: number }[];
   /** Effective income-tax rate applied to `income` (0..1). Undefined = untaxed. */
   taxRate?: number;
+  /** Lifestyle level used when the record was computed. */
+  lifestyle?: LifestyleLevel;
 };
 
 export type PrefillState = {
@@ -42,6 +61,7 @@ export type PrefillState = {
   numberOfKids?: number;
   rentLocation?: RentLocation;
   applyTax?: boolean;
+  lifestyle?: LifestyleLevel;
 };
 
 const PRICE_KEYS = [
@@ -144,10 +164,6 @@ const PER_UNIT_OR_ONE_OFF = [
 const TRANSPORT_MONTHLY_CAP_USD = 600;
 const CHILDCARE_MONTHLY_CAP_USD = 4000;
 
-// Heuristic multipliers to turn unit prices into a more realistic monthly spend.
-const MARKETS_BASKET_MULTIPLIER = 4;
-const TRANSPORT_MONTHLY_MULTIPLIER = 1.5;
-
 function looksLikeMonthlyItem(p: ApiPriceItem): boolean {
   const item = ((p.item_name ?? p.item ?? '') as string).toLowerCase();
   const cat = ((p.category_name ?? p.category ?? '') as string).toLowerCase();
@@ -176,7 +192,9 @@ export function median(values: number[]): number {
 export function computeMonthlyCostsFromPrices(
   priceItems: ApiPriceItem[],
   rentLocation: RentLocation = 'center',
+  lifestyle: LifestyleLevel = 'average',
 ): { totalUsd: number; byCategory: Map<string, number> } {
+  const { marketsBasket, transportMonthly } = LIFESTYLE_MULTIPLIERS[lifestyle];
   const sumByCategory = new Map<string, number>();
   const listByCategory = new Map<string, number[]>();
   const rentCenter: number[] = [];
@@ -240,11 +258,11 @@ export function computeMonthlyCostsFromPrices(
     if (list.length > 0) {
       if (cat === 'Transportation') {
         const base = median(list);
-        const val = base * TRANSPORT_MONTHLY_MULTIPLIER;
+        const val = base * transportMonthly;
         byCategory.set('Transportation', (byCategory.get('Transportation') ?? 0) + val);
       } else if (cat === 'MarketsRaw') {
         const rawSum = list.reduce((a, b) => a + b, 0);
-        const monthlyMarkets = rawSum * MARKETS_BASKET_MULTIPLIER;
+        const monthlyMarkets = rawSum * marketsBasket;
         byCategory.set('Markets', (byCategory.get('Markets') ?? 0) + monthlyMarkets);
       } else {
         const val = median(list);
@@ -311,6 +329,11 @@ export function parseStoredRecords(raw: string | null): CalculationRecord[] {
             typeof rec.taxRate === 'number' && Number.isFinite(rec.taxRate)
               ? Math.max(0, Math.min(1, rec.taxRate))
               : undefined,
+          lifestyle: (rec.lifestyle === 'frugal' ||
+          rec.lifestyle === 'average' ||
+          rec.lifestyle === 'comfortable'
+            ? rec.lifestyle
+            : undefined) as LifestyleLevel | undefined,
         };
       })
       .filter((r) => r.city && r.country);
@@ -319,7 +342,16 @@ export function parseStoredRecords(raw: string | null): CalculationRecord[] {
   }
 }
 
-const SHARE_PARAM_KEYS = ['income', 'currency', 'city', 'country', 'kids', 'rent', 'tax'] as const;
+const SHARE_PARAM_KEYS = [
+  'income',
+  'currency',
+  'city',
+  'country',
+  'kids',
+  'rent',
+  'tax',
+  'lifestyle',
+] as const;
 
 export function readShareStateFromSearch(search: string): PrefillState | null {
   if (!search) return null;
@@ -348,6 +380,10 @@ export function readShareStateFromSearch(search: string): PrefillState | null {
   if (rent === 'center' || rent === 'outskirts') state.rentLocation = rent;
   const tax = params.get('tax');
   if (tax === '1' || tax === 'true') state.applyTax = true;
+  const lifestyle = params.get('lifestyle');
+  if (lifestyle === 'frugal' || lifestyle === 'average' || lifestyle === 'comfortable') {
+    state.lifestyle = lifestyle;
+  }
 
   return state;
 }

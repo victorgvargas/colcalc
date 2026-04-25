@@ -14,6 +14,7 @@ import {
 import {
   CURRENCIES,
   type CurrencyCode,
+  type LifestyleLevel,
   type RentLocation,
 } from './logic';
 
@@ -37,6 +38,8 @@ type Props = {
   setNumberOfKids: (v: number) => void;
   rentLocation: RentLocation;
   setRentLocation: (v: RentLocation) => void;
+  lifestyle: LifestyleLevel;
+  setLifestyle: (v: LifestyleLevel) => void;
   applyTax: boolean;
   setApplyTax: (v: boolean) => void;
 
@@ -77,6 +80,8 @@ const CalculatorForm: React.FC<Props> = ({
   setNumberOfKids,
   rentLocation,
   setRentLocation,
+  lifestyle,
+  setLifestyle,
   applyTax,
   setApplyTax,
   allCities,
@@ -206,6 +211,18 @@ const CalculatorForm: React.FC<Props> = ({
             >
               <MenuItem value="center">City centre</MenuItem>
               <MenuItem value="outskirts">Outside centre</MenuItem>
+            </TextField>
+            <TextField
+              select
+              label="Lifestyle"
+              fullWidth
+              value={lifestyle}
+              onChange={(e) => setLifestyle(e.target.value as LifestyleLevel)}
+              helperText="Scales groceries and transport"
+            >
+              <MenuItem value="frugal">Frugal</MenuItem>
+              <MenuItem value="average">Average</MenuItem>
+              <MenuItem value="comfortable">Comfortable</MenuItem>
             </TextField>
           </Box>
           <Box sx={{ mt: 2 }}>

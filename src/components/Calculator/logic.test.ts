@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ApiPriceItem } from '../../api/costOfLiving';
 import {
   CURRENCIES,
+  LIFESTYLE_MULTIPLIERS,
   computeMonthlyCostsFromPrices,
   median,
   parseStoredRecords,
@@ -279,5 +280,75 @@ describe('readShareStateFromSearch', () => {
     const s = readShareStateFromSearch('?city=New%20York&country=United%20States');
     expect(s?.city).toBe('New York');
     expect(s?.country).toBe('United States');
+  });
+
+  it('reads a valid lifestyle level', () => {
+    expect(readShareStateFromSearch('?city=Berlin&lifestyle=frugal')?.lifestyle).toBe('frugal');
+    expect(readShareStateFromSearch('?city=Berlin&lifestyle=comfortable')?.lifestyle).toBe('comfortable');
+  });
+
+  it('ignores invalid lifestyle values', () => {
+    expect(readShareStateFromSearch('?city=Berlin&lifestyle=lavish')?.lifestyle).toBeUndefined();
+  });
+});
+
+describe('computeMonthlyCostsFromPrices — lifestyle levels', () => {
+  const prices: ApiPriceItem[] = [
+    // Markets: raw sum is 10, so by lifestyle: frugal=30, average=40, comfortable=50.
+    item({ category_name: 'Markets', item_name: 'Milk', usd: { avg: 4 } }),
+    item({ category_name: 'Markets', item_name: 'Bread', usd: { avg: 6 } }),
+    // Transport: median is 50, so frugal=50, average=75, comfortable=100.
+    item({ category_name: 'Transportation', item_name: 'Monthly Pass A', usd: { avg: 40 } }),
+    item({ category_name: 'Transportation', item_name: 'Monthly Pass B', usd: { avg: 60 } }),
+  ];
+
+  it('defaults to average multipliers when no level is passed', () => {
+    const { byCategory } = computeMonthlyCostsFromPrices(prices, 'center');
+    expect(byCategory.get('Markets')).toBe(40);
+    expect(byCategory.get('Transportation')).toBe(75);
+  });
+
+  it('applies frugal multipliers', () => {
+    const { byCategory } = computeMonthlyCostsFromPrices(prices, 'center', 'frugal');
+    expect(byCategory.get('Markets')).toBe(30);
+    expect(byCategory.get('Transportation')).toBe(50);
+  });
+
+  it('applies comfortable multipliers', () => {
+    const { byCategory } = computeMonthlyCostsFromPrices(prices, 'center', 'comfortable');
+    expect(byCategory.get('Markets')).toBe(50);
+    expect(byCategory.get('Transportation')).toBe(100);
+  });
+
+  it('frugal total < average total < comfortable total', () => {
+    const frugal = computeMonthlyCostsFromPrices(prices, 'center', 'frugal').totalUsd;
+    const average = computeMonthlyCostsFromPrices(prices, 'center', 'average').totalUsd;
+    const comfortable = computeMonthlyCostsFromPrices(prices, 'center', 'comfortable').totalUsd;
+    expect(frugal).toBeLessThan(average);
+    expect(average).toBeLessThan(comfortable);
+  });
+
+  it('multiplier table is sane: frugal < average < comfortable for both knobs', () => {
+    const { frugal, average, comfortable } = LIFESTYLE_MULTIPLIERS;
+    expect(frugal.marketsBasket).toBeLessThan(average.marketsBasket);
+    expect(average.marketsBasket).toBeLessThan(comfortable.marketsBasket);
+    expect(frugal.transportMonthly).toBeLessThan(average.transportMonthly);
+    expect(average.transportMonthly).toBeLessThan(comfortable.transportMonthly);
+  });
+});
+
+describe('parseStoredRecords — lifestyle', () => {
+  it('parses a valid lifestyle level from storage', () => {
+    const stored = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, lifestyle: 'frugal' },
+    ]);
+    expect(parseStoredRecords(stored)[0].lifestyle).toBe('frugal');
+  });
+
+  it('drops invalid lifestyle values', () => {
+    const stored = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, lifestyle: 'lavish' },
+    ]);
+    expect(parseStoredRecords(stored)[0].lifestyle).toBeUndefined();
   });
 });
