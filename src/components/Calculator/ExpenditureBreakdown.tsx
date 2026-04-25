@@ -21,12 +21,15 @@ type Props = {
   selectedRecord?: CalculationRecord | null;
   /** Currency to render inside tooltip (the data values are already converted). */
   displayCurrency?: CurrencyCode;
+  /** Number of price points the breakdown is based on. Used for provenance. */
+  pricePointCount?: number;
 };
 
 const ExpenditureBreakdown: React.FC<Props> = ({
   data,
   selectedRecord = null,
   displayCurrency = 'EUR',
+  pricePointCount,
 }) => {
   const navigate = useNavigate();
 
@@ -50,14 +53,21 @@ const ExpenditureBreakdown: React.FC<Props> = ({
             mb: 1,
           }}
         >
-          <Typography variant="h6">
-            Expenditure breakdown
-            {selectedRecord && (
-              <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                — {selectedRecord.city}, {selectedRecord.country}
+          <Box>
+            <Typography variant="h6">
+              Expenditure breakdown
+              {selectedRecord && (
+                <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                  — {selectedRecord.city}, {selectedRecord.country}
+                </Typography>
+              )}
+            </Typography>
+            {selectedRecord && typeof pricePointCount === 'number' && pricePointCount > 0 && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Based on {pricePointCount} price point{pricePointCount === 1 ? '' : 's'}
               </Typography>
             )}
-          </Typography>
+          </Box>
           {selectedRecord && (
             <Button size="small" variant="text" onClick={handleCompare}>
               Compare with another city →

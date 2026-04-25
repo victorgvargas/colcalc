@@ -243,6 +243,27 @@ export async function fetchCities(): Promise<CityOption[]> {
   return cities.map((c) => ({ cityName: c.city, countryName: c.country }));
 }
 
+export type DatasetMeta = {
+  source?: string;
+  /** ISO-8601 timestamp the JSON was generated. */
+  generatedAt?: string;
+  /** Number of cities in the dataset. */
+  cityCount?: number;
+};
+
+/**
+ * Read the top-level provenance fields from the bundled dataset so the UI can
+ * surface "Data from X, N cities, updated Y" without duplicating the loader.
+ */
+export async function fetchDatasetMeta(): Promise<DatasetMeta> {
+  const { source, generatedAt, cityCount, cities } = await loadDataset();
+  return {
+    source,
+    generatedAt,
+    cityCount: typeof cityCount === 'number' ? cityCount : cities.length,
+  };
+}
+
 export type DatasetCity = {
   city: string;
   country: string;
@@ -257,6 +278,8 @@ export async function fetchDatasetCities(): Promise<DatasetCity[]> {
 export type CityPricesResult = {
   prices: ApiPriceItem[];
   exchangeRate: Record<string, number> | null;
+  /** How many individual price points were bundled for this city. */
+  pricePointCount: number;
 };
 
 export async function fetchPricesForCity(
@@ -276,5 +299,5 @@ export async function fetchPricesForCity(
     item_name: p.item,
     usd: { avg: p.usd },
   }));
-  return { prices, exchangeRate: null };
+  return { prices, exchangeRate: null, pricePointCount: entry.prices.length };
 }

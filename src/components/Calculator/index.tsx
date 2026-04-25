@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Snackbar, Typography } from '@mui/material';
 import { getUsdRates, getUsdToCurrencyRate } from '../../api/exchangeRates';
-import { fetchCities, fetchPricesForCity, type ApiPriceItem } from '../../api/costOfLiving';
+import {
+  fetchCities,
+  fetchDatasetMeta,
+  fetchPricesForCity,
+  type ApiPriceItem,
+  type DatasetMeta,
+} from '../../api/costOfLiving';
 import {
   countryNameToCode,
   fetchIncomeTax,
@@ -86,7 +92,23 @@ const Calculator: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [prices, setPrices] = useState<ApiPriceItem[]>([]);
+  const [livePricePointCount, setLivePricePointCount] = useState<number | null>(null);
+  const [datasetMeta, setDatasetMeta] = useState<DatasetMeta | null>(null);
   const [usdRates, setUsdRates] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDatasetMeta()
+      .then((meta) => {
+        if (!cancelled) setDatasetMeta(meta);
+      })
+      .catch(() => {
+        if (!cancelled) setDatasetMeta(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [records, setRecords] = useState<CalculationRecord[]>(() =>
     typeof localStorage !== 'undefined'
       ? parseStoredRecords(localStorage.getItem(RECORDS_STORAGE_KEY))
@@ -313,11 +335,12 @@ const Calculator: React.FC = () => {
         setTaxError(null);
       }
 
-      const { prices: fetchedPrices } = await fetchPricesForCity(
+      const { prices: fetchedPrices, pricePointCount } = await fetchPricesForCity(
         city.trim(),
         country.trim(),
       );
       setPrices(fetchedPrices);
+      setLivePricePointCount(pricePointCount);
 
       const { totalUsd: computedTotalCostsUsd, byCategory: computedByCategory } =
         computeMonthlyCostsFromPrices(fetchedPrices, rentLocation, lifestyle);
@@ -358,6 +381,7 @@ const Calculator: React.FC = () => {
         costBreakdown,
         taxRate: resolvedTaxRate ?? undefined,
         lifestyle,
+        pricePointCount,
       };
 
       setRecords((prev) => [record, ...prev]);
@@ -424,6 +448,7 @@ const Calculator: React.FC = () => {
     setRentLocation('center');
     setLifestyle('average');
     setPrices([]);
+    setLivePricePointCount(null);
     setError(null);
     setApplyTax(false);
     setTaxEffectiveRate(null);
@@ -524,6 +549,7 @@ const Calculator: React.FC = () => {
         taxLoading={taxLoading}
         error={error}
         taxError={taxError}
+        datasetMeta={datasetMeta}
       />
 
       <Box
@@ -534,7 +560,13 @@ const Calculator: React.FC = () => {
         }}
       >
         <Box sx={{ flex: { xs: '0 0 auto', md: '0 0 40%' } }}>
-          <ExpenditureBreakdown data={pieChartData} selectedRecord={selectedRecord} />
+          <ExpenditureBreakdown
+            data={pieChartData}
+            selectedRecord={selectedRecord}
+            pricePointCount={
+              selectedRecord?.pricePointCount ?? livePricePointCount ?? undefined
+            }
+          />
         </Box>
 
         <Box sx={{ flex: 1 }}>

@@ -429,3 +429,27 @@ describe('parseStoredRecords — lifestyle', () => {
     expect(parseStoredRecords(stored)[0].lifestyle).toBeUndefined();
   });
 });
+
+describe('parseStoredRecords — pricePointCount', () => {
+  it('preserves a valid pricePointCount', () => {
+    const stored = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, pricePointCount: 23 },
+    ]);
+    expect(parseStoredRecords(stored)[0].pricePointCount).toBe(23);
+  });
+
+  it('floors fractional values and drops negatives', () => {
+    const a = JSON.stringify([
+      { id: 1, city: 'Berlin', country: 'Germany', income: 1, totalCosts: 0, netBudget: 1, pricePointCount: 4.9 },
+    ]);
+    const b = JSON.stringify([
+      { id: 2, city: 'Paris', country: 'France', income: 1, totalCosts: 0, netBudget: 1, pricePointCount: -5 },
+    ]);
+    const c = JSON.stringify([
+      { id: 3, city: 'Rome', country: 'Italy', income: 1, totalCosts: 0, netBudget: 1, pricePointCount: 'many' },
+    ]);
+    expect(parseStoredRecords(a)[0].pricePointCount).toBe(4);
+    expect(parseStoredRecords(b)[0].pricePointCount).toBeUndefined();
+    expect(parseStoredRecords(c)[0].pricePointCount).toBeUndefined();
+  });
+});

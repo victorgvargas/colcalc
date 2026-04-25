@@ -18,6 +18,7 @@ import {
   type LifestyleLevel,
   type RentLocation,
 } from './logic';
+import type { DatasetMeta } from '../../api/costOfLiving';
 
 export type CityOption = {
   cityName: string;
@@ -69,6 +70,9 @@ type Props = {
   taxLoading: boolean;
   error: string | null;
   taxError: string | null;
+
+  /** Provenance shown under the result summary. */
+  datasetMeta?: DatasetMeta | null;
 };
 
 const CalculatorForm: React.FC<Props> = ({
@@ -104,6 +108,7 @@ const CalculatorForm: React.FC<Props> = ({
   taxLoading,
   error,
   taxError,
+  datasetMeta,
 }) => {
   return (
     <Card>
@@ -313,10 +318,44 @@ const CalculatorForm: React.FC<Props> = ({
               {error}
             </Typography>
           )}
+          {datasetMeta && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 2 }}
+            >
+              {renderProvenance(datasetMeta)}
+            </Typography>
+          )}
         </Box>
       </CardContent>
     </Card>
   );
 };
+
+function renderProvenance(meta: DatasetMeta): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const sourceLabel = meta.source ? (
+    <a
+      key="src"
+      href={meta.source}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ color: 'inherit' }}
+    >
+      open Cost of Living dataset
+    </a>
+  ) : (
+    'open Cost of Living dataset'
+  );
+  parts.push(<>Data from {sourceLabel}</>);
+  if (meta.cityCount != null) parts.push(`${meta.cityCount.toLocaleString()} cities`);
+  const when = meta.generatedAt ? meta.generatedAt.slice(0, 10) : null;
+  if (when) parts.push(`updated ${when}`);
+  return parts.reduce<React.ReactNode[]>((acc, p, i) => {
+    if (i === 0) return [p];
+    return [...acc, ' · ', p];
+  }, []);
+}
 
 export default CalculatorForm;

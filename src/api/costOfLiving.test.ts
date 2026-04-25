@@ -231,4 +231,66 @@ describe('fetchCities + fetchPricesForCity', () => {
     const mod = await import('./costOfLiving');
     await expect(mod.fetchCities()).rejects.toThrow(/500/);
   });
+
+  it('fetchDatasetMeta returns provenance fields', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        source: 'https://example.com/dataset',
+        generatedAt: '2026-04-24T10:47:30.079Z',
+        cityCount: 4869,
+        cities: [],
+      }),
+    }) as unknown as typeof fetch;
+
+    const mod = await import('./costOfLiving');
+    const meta = await mod.fetchDatasetMeta();
+    expect(meta).toEqual({
+      source: 'https://example.com/dataset',
+      generatedAt: '2026-04-24T10:47:30.079Z',
+      cityCount: 4869,
+    });
+  });
+
+  it('fetchDatasetMeta falls back to cities.length when cityCount is missing', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        source: 'https://example.com/dataset',
+        cities: [
+          { city: 'Berlin', country: 'Germany', prices: [] },
+          { city: 'Paris', country: 'France', prices: [] },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const mod = await import('./costOfLiving');
+    const meta = await mod.fetchDatasetMeta();
+    expect(meta.cityCount).toBe(2);
+    expect(meta.generatedAt).toBeUndefined();
+  });
+
+  it('fetchPricesForCity returns the dataset price-point count', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        cities: [
+          {
+            city: 'Berlin',
+            country: 'Germany',
+            prices: [
+              { category: 'Rent', item: '1 bedroom', usd: 1200 },
+              { category: 'Markets', item: 'Milk', usd: 2 },
+              { category: 'Markets', item: 'Bread', usd: 3 },
+            ],
+          },
+        ],
+      }),
+    }) as unknown as typeof fetch;
+
+    const mod = await import('./costOfLiving');
+    const result = await mod.fetchPricesForCity('Berlin', 'Germany');
+    expect(result.pricePointCount).toBe(3);
+    expect(result.prices).toHaveLength(3);
+  });
 });

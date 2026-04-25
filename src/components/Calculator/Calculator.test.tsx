@@ -14,6 +14,7 @@ vi.mock('../../api/costOfLiving', async () => {
     ...actual,
     fetchCities: vi.fn(),
     fetchPricesForCity: vi.fn(),
+    fetchDatasetMeta: vi.fn(),
   };
 });
 
@@ -40,7 +41,7 @@ vi.mock('../TopCitiesDirectory', () => ({
   default: () => null,
 }));
 
-import { fetchCities, fetchPricesForCity } from '../../api/costOfLiving';
+import { fetchCities, fetchDatasetMeta, fetchPricesForCity } from '../../api/costOfLiving';
 import { getUsdRates } from '../../api/exchangeRates';
 import {
   countryNameToCode,
@@ -74,6 +75,12 @@ beforeEach(() => {
   vi.mocked(fetchPricesForCity).mockResolvedValue({
     prices: berlinPrices,
     exchangeRate: null,
+    pricePointCount: berlinPrices.length,
+  });
+  vi.mocked(fetchDatasetMeta).mockResolvedValue({
+    source: 'https://example.com/dataset',
+    generatedAt: '2026-04-24T10:00:00.000Z',
+    cityCount: 4869,
   });
   vi.mocked(getUsdRates).mockResolvedValue({ eur: 0.9, usd: 1 });
   vi.mocked(fetchTaxCountries).mockResolvedValue([
@@ -290,5 +297,36 @@ describe('<Calculator /> validation', () => {
       (screen.getByRole('checkbox', { name: /Apply estimated income tax/i }) as HTMLInputElement)
         .checked,
     ).toBe(false);
+  });
+});
+
+describe('<Calculator /> data provenance', () => {
+  it('renders the "Data from … cities … updated …" caption once the metadata loads', async () => {
+    renderCalculator();
+    // Caption is rendered inside the form card, below the Calculate/Reset row.
+    await waitFor(() => {
+      expect(screen.getByText(/Data from/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/4,869 cities/)).toBeInTheDocument();
+    expect(screen.getByText(/updated 2026-04-24/)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /open Cost of Living dataset/i });
+    expect(link).toHaveAttribute('href', 'https://example.com/dataset');
+  });
+
+  it('shows "Based on N price points" in the breakdown after a calculation', async () => {
+    const user = userEvent.setup();
+    renderCalculator();
+
+    await user.type(screen.getByLabelText(/Monthly Income/i), '5000');
+    await user.type(screen.getByRole('combobox', { name: /City/i }), 'Berlin');
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect((screen.getByLabelText(/Country/i) as HTMLInputElement).value).toBe('Germany'),
+    );
+    await user.click(screen.getByRole('button', { name: /Calculate/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Based on 4 price points/)).toBeInTheDocument();
+    });
   });
 });

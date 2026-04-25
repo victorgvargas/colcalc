@@ -104,3 +104,52 @@ describe('<ExpenditureBreakdown /> Compare CTA', () => {
     expect(spy.textContent).not.toContain('country1=');
   });
 });
+
+describe('<ExpenditureBreakdown /> price-point caption', () => {
+  it('renders "Based on N price points" when a record and count are provided', () => {
+    render(
+      <MemoryRouter>
+        <ExpenditureBreakdown
+          data={[{ name: 'Rent', value: 1 }]}
+          selectedRecord={record}
+          pricePointCount={23}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Based on 23 price points/)).toBeInTheDocument();
+  });
+
+  it('pluralizes correctly for 1', () => {
+    render(
+      <MemoryRouter>
+        <ExpenditureBreakdown
+          data={[{ name: 'Rent', value: 1 }]}
+          selectedRecord={record}
+          pricePointCount={1}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Based on 1 price point$/)).toBeInTheDocument();
+  });
+
+  it('hides the caption when no record is selected', () => {
+    render(
+      <MemoryRouter>
+        <ExpenditureBreakdown data={[]} pricePointCount={10} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/Based on/)).not.toBeInTheDocument();
+  });
+
+  it('hides the caption when count is missing even if a record is selected', () => {
+    render(
+      <MemoryRouter>
+        <ExpenditureBreakdown
+          data={[{ name: 'Rent', value: 1 }]}
+          selectedRecord={record}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/Based on/)).not.toBeInTheDocument();
+  });
+});

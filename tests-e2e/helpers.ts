@@ -29,7 +29,9 @@ export async function mockThirdParty(page: Page): Promise<void> {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        generatedAt: '2026-04-25',
+        source: 'https://example.com/open-dataset',
+        generatedAt: '2026-04-25T10:00:00.000Z',
+        cityCount: 2,
         cities: [
           {
             city: 'Berlin',

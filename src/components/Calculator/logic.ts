@@ -123,6 +123,8 @@ export type CalculationRecord = {
   taxRate?: number;
   /** Lifestyle level used when the record was computed. */
   lifestyle?: LifestyleLevel;
+  /** Number of price points the calculation was based on. */
+  pricePointCount?: number;
 };
 
 export type PrefillState = {
@@ -407,6 +409,10 @@ export function parseStoredRecords(raw: string | null): CalculationRecord[] {
           rec.lifestyle === 'comfortable'
             ? rec.lifestyle
             : undefined) as LifestyleLevel | undefined,
+          pricePointCount:
+            typeof rec.pricePointCount === 'number' && rec.pricePointCount >= 0
+              ? Math.floor(rec.pricePointCount)
+              : undefined,
         };
       })
       .filter((r) => r.city && r.country);
