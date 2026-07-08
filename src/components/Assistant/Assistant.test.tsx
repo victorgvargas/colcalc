@@ -28,7 +28,20 @@ function renderAssistant() {
 beforeEach(() => {
   vi.mocked(callGemini).mockReset();
   vi.mocked(runTool).mockReset();
+  localStorage.clear();
 });
+
+/** Queue a single plain-text model reply. */
+function mockReply(text: string) {
+  vi.mocked(callGemini).mockResolvedValueOnce({
+    candidates: [{ content: { role: 'model', parts: [{ text }] } }],
+  });
+}
+
+async function sendMessage(user: ReturnType<typeof userEvent.setup>, text: string) {
+  await user.type(screen.getByPlaceholderText(/Ask anything/i), text);
+  await user.click(screen.getByRole('button', { name: /Send/i }));
+}
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -140,6 +153,86 @@ describe('<Assistant />', () => {
 
     await user.type(screen.getByPlaceholderText(/Ask anything/i), 'hello');
     expect(send).not.toBeDisabled();
+  });
+});
+
+describe('<Assistant /> chat sessions', () => {
+  it('starts a fresh conversation via the New chat button', async () => {
+    mockReply('First chat reply.');
+    const user = userEvent.setup();
+    renderAssistant();
+    await user.click(screen.getByRole('button', { name: /open assistant/i }));
+
+    await sendMessage(user, 'Hello there');
+    await waitFor(() => expect(screen.getByText('First chat reply.')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /^New chat$/i }));
+
+    expect(screen.queryByText('First chat reply.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Hello there')).not.toBeInTheDocument();
+    // Empty-state hint shows again on a blank chat.
+    expect(screen.getByText(/Ask about cost of living/i)).toBeInTheDocument();
+  });
+
+  it('lists previous chats in history and restores one on click', async () => {
+    mockReply('Reply about Berlin.');
+    mockReply('Reply about Lisbon.');
+    const user = userEvent.setup();
+    renderAssistant();
+    await user.click(screen.getByRole('button', { name: /open assistant/i }));
+
+    await sendMessage(user, 'Tell me about Berlin');
+    await waitFor(() => expect(screen.getByText('Reply about Berlin.')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /^New chat$/i }));
+    await sendMessage(user, 'Tell me about Lisbon');
+    await waitFor(() => expect(screen.getByText('Reply about Lisbon.')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /^Chat history$/i }));
+    expect(screen.getByRole('heading', { name: /Chat history/i })).toBeInTheDocument();
+    expect(screen.getByText('Tell me about Berlin')).toBeInTheDocument();
+    expect(screen.getByText('Tell me about Lisbon')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Tell me about Berlin'));
+    // Back in conversation view with the old messages restored.
+    expect(screen.getByText('Reply about Berlin.')).toBeInTheDocument();
+    expect(screen.queryByText('Reply about Lisbon.')).not.toBeInTheDocument();
+  });
+
+  it('deletes a chat from the history list', async () => {
+    mockReply('Some reply.');
+    const user = userEvent.setup();
+    renderAssistant();
+    await user.click(screen.getByRole('button', { name: /open assistant/i }));
+
+    await sendMessage(user, 'Disposable chat');
+    await waitFor(() => expect(screen.getByText('Some reply.')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /^Chat history$/i }));
+    await user.click(
+      screen.getByRole('button', { name: /Delete chat: Disposable chat/i }),
+    );
+
+    expect(screen.queryByText('Disposable chat')).not.toBeInTheDocument();
+    expect(screen.getByText(/No previous chats yet/i)).toBeInTheDocument();
+  });
+
+  it('persists chats to localStorage', async () => {
+    mockReply('Persisted reply.');
+    const user = userEvent.setup();
+    renderAssistant();
+    await user.click(screen.getByRole('button', { name: /open assistant/i }));
+
+    await sendMessage(user, 'Remember me');
+    await waitFor(() => expect(screen.getByText('Persisted reply.')).toBeInTheDocument());
+
+    const stored = JSON.parse(localStorage.getItem('colcalc_assistant_chats') ?? '[]');
+    expect(stored).toHaveLength(1);
+    expect(stored[0].title).toBe('Remember me');
+    expect(stored[0].messages).toEqual([
+      { role: 'user', text: 'Remember me' },
+      { role: 'assistant', text: 'Persisted reply.' },
+    ]);
   });
 });
 
