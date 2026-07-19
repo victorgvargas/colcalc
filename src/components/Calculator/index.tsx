@@ -182,6 +182,13 @@ const Calculator: React.FC = () => {
       .finally(() => setCitiesLoading(false));
   }, []);
 
+  // A prefilled city (tax handoff / shared URL) needs the city list to resolve
+  // its country, but the list is otherwise only fetched when the dropdown opens.
+  useEffect(() => {
+    if (initialPrefill?.city) loadCities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const filteredCityOptions = useMemo(() => {
     const q = cityInputDebounced.trim().toLowerCase();
     if (!q) return allCities;
@@ -195,6 +202,9 @@ const Calculator: React.FC = () => {
       setCountry('');
       return;
     }
+    // Cities load lazily, so until the list arrives we can't resolve a country —
+    // clearing here would wipe a prefilled one before it ever gets a chance.
+    if (allCities.length === 0) return;
     const found = allCities.find(
       (c) => c.cityName.toLowerCase() === trimmed.toLowerCase(),
     );

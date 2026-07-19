@@ -143,6 +143,40 @@ describe('<Calculator /> happy path', () => {
       expect(screen.getByText(/Total costs: 1296\.00 EUR/)).toBeInTheDocument();
     });
   });
+
+  it('keeps the country prefilled when arriving from the tax calculator', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/calculator',
+            state: { income: 3500, currency: 'EUR', city: 'Berlin', country: 'Germany' },
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/calculator" element={<Calculator />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const countryInput = screen.getByLabelText(/Country/i) as HTMLInputElement;
+    expect(countryInput.value).toBe('Germany');
+
+    // The city list loads asynchronously; the country must survive that.
+    await waitFor(() => expect(fetchCities).toHaveBeenCalled());
+    await waitFor(() => expect(countryInput.value).toBe('Germany'));
+
+    await user.click(screen.getByRole('button', { name: /Calculate/i }));
+
+    await waitFor(() =>
+      expect(fetchPricesForCity).toHaveBeenCalledWith('Berlin', 'Germany'),
+    );
+    expect(
+      screen.queryByText(/Please provide a valid income, city, and country/i),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('<Calculator /> tax integration', () => {
