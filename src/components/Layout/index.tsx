@@ -41,7 +41,7 @@ const Layout = () => {
         {
             title: "none",
             items: [
-                { href: "/calculator", alt: "Calculator" },
+                { href: "/calculator", alt: "Calculator", matchPaths: ["/"] },
             ]
         },
         {

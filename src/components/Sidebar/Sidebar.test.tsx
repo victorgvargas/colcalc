@@ -3,9 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import Sidebar from './index';
 
-function renderSidebar(sections: Parameters<typeof Sidebar>[0]['sections']) {
+function renderSidebar(
+  sections: Parameters<typeof Sidebar>[0]['sections'],
+  initialEntry = '/',
+) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Sidebar sections={sections} />
     </MemoryRouter>,
   );
@@ -28,6 +31,32 @@ describe('<Sidebar />', () => {
       'href',
       '/purchasing-power',
     );
+  });
+
+  it('marks an item active on its own path', () => {
+    renderSidebar(
+      [{ title: 'none', items: [{ href: '/tax-calculator', alt: 'Tax calculator' }] }],
+      '/tax-calculator',
+    );
+    expect(screen.getByRole('link', { name: 'Tax calculator' })).toHaveClass('active');
+  });
+
+  it('marks an item active on an aliased path', () => {
+    // The index route renders the calculator, but the URL is "/".
+    renderSidebar([
+      {
+        title: 'none',
+        items: [{ href: '/calculator', alt: 'Calculator', matchPaths: ['/'] }],
+      },
+    ]);
+    expect(screen.getByRole('link', { name: 'Calculator' })).toHaveClass('active');
+  });
+
+  it('leaves unrelated items inactive', () => {
+    renderSidebar([
+      { title: 'none', items: [{ href: '/purchasing-power', alt: 'Purchasing power' }] },
+    ]);
+    expect(screen.getByRole('link', { name: 'Purchasing power' })).not.toHaveClass('active');
   });
 
   it('hides the section title when it equals "none"', () => {
