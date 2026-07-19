@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router';
+import { NavLink, useLocation } from 'react-router';
 import styled from 'styled-components';
 import LoginDialog from '../Auth/LoginDialog';
 import { useAuth } from '../../auth/AuthContext';
@@ -147,13 +147,16 @@ const DonateLink = styled.a`
 type SidebarProps = {
     sections: { 
       title: string;
-      items: { href: string; alt: string }[] 
+      // `matchPaths` are extra pathnames that should also highlight the item —
+      // e.g. the index route renders the calculator but its URL is "/".
+      items: { href: string; alt: string; matchPaths?: string[] }[]
     }[];
 };
 
 const Sidebar = ({ sections }: SidebarProps) => {
   const { user, status, logout } = useAuth();
   const [loginOpen, setLoginOpen] = useState(false);
+  const { pathname } = useLocation();
 
   return (
     <StyledSidebar>
@@ -166,7 +169,16 @@ const Sidebar = ({ sections }: SidebarProps) => {
             <SidebarSection key={section.title}>
               {section.title !== "none" && <SectionTitle>{section.title}</SectionTitle>}
               {section.items.map((item) => (
-                <SectionItem key={item.href} to={item.href}>{item.alt}</SectionItem>
+                <SectionItem
+                  key={item.href}
+                  to={item.href}
+                  // A plain string here — styled-components merges it with its
+                  // own classes, and NavLink still appends "active" on a real
+                  // match. A function className would clobber both.
+                  className={item.matchPaths?.includes(pathname) ? 'active' : undefined}
+                >
+                  {item.alt}
+                </SectionItem>
               ))}
             </SidebarSection>
           ))}
