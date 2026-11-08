@@ -91,3 +91,24 @@ The app is set up for search engines:
 - **Sitemap & robots**: `public/sitemap.xml` and `public/robots.txt` are included. Update the domain in both files if you deploy to a different URL.
 - **Structured data**: JSON-LD `WebApplication` schema in `index.html` for rich results.
 - **Semantic headings**: One `<h1>` per page in the main content.
+
+## Relocation planning preview
+
+The home page now leads into a household-based planning workspace:
+
+- `/onboarding` and `/app/profile`: household, timing, housing and optional monthly USD budgets.
+- `/app`: destination report library and a persistent general planning checklist.
+- `/app/reports/:id`: a saved profile/price snapshot, budget assumptions, coverage gaps and print-to-PDF.
+
+This first slice stores relocation data only in this browser under `colcalc_relocation_v1`, independently of account/calculator sync. A shared report URL does not transmit its contents. Use the workspace's clear-data action to remove the profile, reports and tasks. Existing calculators and public city pages remain available.
+
+Housing selects the requested dataset bedroom count and center/outskirts location; transit uses one monthly pass per adult. Other spending can be supplied explicitly as household budgets. Missing prices or budgets remain unknown and suppress complete totals/surplus claims. USD prices come from the bundled dataset, with no implied current observation date. Reports preserve their inputs when the profile changes.
+
+Reviewed visa assessments, official fee calculations, country-specific arrival instructions, destination tax calculations and backend relocation persistence are **not implemented yet**. General checklist items are research prompts. See [the product plan](RELOCATION_PRODUCT_PLAN.md) for the remaining phases.
+
+Checks for this slice:
+
+```bash
+npm test -- src/relocation/model.test.ts src/components/Relocation/Relocation.test.tsx
+npx playwright test tests-e2e/relocation.spec.ts --workers=1
+```

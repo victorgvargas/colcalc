@@ -1,8 +1,9 @@
 import styled from "styled-components";
+import { useEffect, useRef } from "react";
 import Sidebar from "../Sidebar";
 import SEO from "../SEO";
 import Assistant from "../Assistant";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 const Container = styled.div`
     display: flex;
@@ -24,10 +25,10 @@ const Container = styled.div`
 const MainContent = styled.main`
     flex: 1;
     min-width: 0;
-    background-color: #fafafa;
-    border: 1px solid #ddd;
+    background-color: #fbfcf8;
+    border: 1px solid #dce5dc;
     border-radius: 8px;
-    padding: 24px;
+    padding: 32px;
     overflow: auto;
 
     @media (max-width: 768px) {
@@ -37,38 +38,32 @@ const MainContent = styled.main`
 `;
 
 const Layout = () => {
+    const { pathname } = useLocation();
+    const main = useRef<HTMLElement>(null);
+    useEffect(() => {
+        main.current?.scrollTo({ top: 0 });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    }, [pathname]);
     const sidebarSections = [
-        {
-            title: "none",
-            items: [
-                { href: "/calculator", alt: "Calculator", matchPaths: ["/"] },
-            ]
-        },
-        {
-            title: "none",
-            items: [
-                { href: "/cities-comparison", alt: "Cities comparison" },
-            ]
-        },
-        {
-            title: "none",
-            items: [
-                { href: "/purchasing-power", alt: "Purchasing power parity" },
-            ]
-        },
-        {
-            title: "none",
-            items: [
-                { href: "/tax-calculator", alt: "Tax calculator" },
-            ]
-        }
+        { title: "Relocation", items: [
+            { href: "/", alt: "Discover ColCalc" },
+            { href: "/app", alt: "My relocation" },
+            { href: "/onboarding", alt: "Build a plan" },
+        ] },
+        { title: "Explore tools", items: [
+            { href: "/calculator", alt: "Calculator" },
+            { href: "/cities-comparison", alt: "Cities comparison" },
+            { href: "/purchasing-power", alt: "Purchasing power parity" },
+            { href: "/tax-calculator", alt: "Tax calculator" },
+        ] },
     ];
 
     return (
         <Container>
             <SEO />
             <Sidebar sections={sidebarSections}/>
-            <MainContent>
+            <MainContent ref={main}>
                 <Outlet />
             </MainContent>
             <Assistant />

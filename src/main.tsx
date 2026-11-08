@@ -12,12 +12,19 @@ import CityPage from './components/CityPage/index.tsx';
 import ComparisonPage from './components/ComparisonPage/index.tsx';
 import AuthCallback from './components/Auth/AuthCallback.tsx';
 import { AuthProvider } from './auth/AuthContext.tsx';
+import { WorkspaceProvider } from './relocation/WorkspaceContext';
+import HomeRoute from './components/Relocation/HomeRoute';
+import { WorkspaceDashboard, ProfileEditor, DestinationReport } from './components/Relocation';
 
 const router = createBrowserRouter([
   {
     Component: Layout,
     children: [
-      { index: true, Component: Calculator },
+      { index: true, Component: HomeRoute },
+      { path: 'onboarding', Component: ProfileEditor },
+      { path: 'app', Component: WorkspaceDashboard },
+      { path: 'app/profile', Component: ProfileEditor },
+      { path: 'app/reports/:id', Component: DestinationReport },
       { path: 'calculator', Component: Calculator },
       { path: 'cities-comparison', Component: CitiesComparison },
       { path: 'purchasing-power', Component: PurchasingPower },
@@ -33,7 +40,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HelmetProvider>
       <AuthProvider>
-        <RouterProvider router={router} />
+        <WorkspaceProvider><RouterProvider router={router} /></WorkspaceProvider>
         <Analytics />
       </AuthProvider>
     </HelmetProvider>

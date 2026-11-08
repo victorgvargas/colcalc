@@ -109,6 +109,17 @@ function main() {
 
   const routes = [];
 
+  // Public landing page only. Personal workspace routes must never be prerendered.
+  routes.push({
+    path: '/',
+    head: buildHead({
+      title: 'Your Personalized Relocation Plan',
+      description: 'Plan your next chapter with a household profile, destination budget reports and a relocation planning checklist.',
+      canonical: SITE_URL,
+      ogType: 'website',
+    }),
+  });
+
   // Core routes.
   routes.push({
     path: '/calculator',

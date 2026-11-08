@@ -10,7 +10,7 @@ const StyledSidebar = styled.div`
     height: 100%;
     max-height: 100%;
     box-sizing: border-box;
-    background-color: #f4f4f4;
+    background-color: #f0f4ec;
     display: flex;
     flex-direction: column;
     gap: 24px;
@@ -33,13 +33,14 @@ const SidebarHeader = styled.div`
   align-items: center;
 `;
 
-const SidebarNav = styled.nav`
+const SidebarNav = styled.nav<{ $open: boolean }>`
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 24px;
   overflow-y: auto;
+  @media (max-width: 768px) { display: ${({ $open }) => $open ? 'flex' : 'none'}; }
 `;
 
 const Logo = styled.img`
@@ -49,8 +50,8 @@ const Logo = styled.img`
 
 const HeaderTitle = styled.div`
   margin-inline-start: 10px;
-  color: #444;
-  font-size: 1.25rem;
+  color: #204f41;
+  font-size: 1.35rem;
   font-weight: 600;
 `;
 
@@ -61,8 +62,12 @@ const SidebarSection = styled.div`
 `;
 
 const SectionTitle = styled.h2`
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  margin: 0 12px;
   font-weight: 600;
-  color: #444;
+  color: #204f41;
 `;
 
 const SectionItem = styled(NavLink)`
@@ -77,25 +82,40 @@ const SectionItem = styled(NavLink)`
     color: #333;
   }
   &.active {
-    background-color: #e0e0e0;
+    background-color: #dce8d7;
     color: #222;
     font-weight: 500;
   }
 `;
 
-const DonateSection = styled.div`
+const DonateSection = styled.div<{ $open: boolean }>`
+  @media (max-width: 768px) { display: ${({ $open }) => $open ? 'block' : 'none'}; }
   flex-shrink: 0;
   padding-top: 12px;
   border-top: 1px solid #ddd;
 `;
 
-const AccountSection = styled.div`
+const AccountSection = styled.div<{ $open: boolean }>`
   flex-shrink: 0;
   padding-top: 12px;
   border-top: 1px solid #ddd;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  @media (max-width: 768px) { display: ${({ $open }) => $open ? 'flex' : 'none'}; }
+`;
+
+const MobileMenu = styled.button`
+  display: none;
+  margin-left: auto;
+  border: 1px solid #b8c8bb;
+  border-radius: 7px;
+  padding: 8px 12px;
+  background: white;
+  color: #204f41;
+  font: inherit;
+  cursor: pointer;
+  @media (max-width: 768px) { display: block; }
 `;
 
 const AccountEmail = styled.div`
@@ -156,6 +176,7 @@ type SidebarProps = {
 const Sidebar = ({ sections }: SidebarProps) => {
   const { user, status, logout } = useAuth();
   const [loginOpen, setLoginOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
 
   return (
@@ -163,8 +184,9 @@ const Sidebar = ({ sections }: SidebarProps) => {
         <SidebarHeader>
             <Logo src="/logo.svg" alt="ColCalc Logo" />
             <HeaderTitle>ColCalc</HeaderTitle>
+            <MobileMenu type="button" aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen(open => !open)}>Menu</MobileMenu>
         </SidebarHeader>
-        <SidebarNav>
+        <SidebarNav id="primary-navigation" $open={menuOpen}>
           {sections.map((section) => (
             <SidebarSection key={section.title}>
               {section.title !== "none" && <SectionTitle>{section.title}</SectionTitle>}
@@ -172,6 +194,8 @@ const Sidebar = ({ sections }: SidebarProps) => {
                 <SectionItem
                   key={item.href}
                   to={item.href}
+                  onClick={() => setMenuOpen(false)}
+                  end={item.href === "/" || item.href === "/app"}
                   // A plain string here — styled-components merges it with its
                   // own classes, and NavLink still appends "active" on a real
                   // match. A function className would clobber both.
@@ -183,7 +207,7 @@ const Sidebar = ({ sections }: SidebarProps) => {
             </SidebarSection>
           ))}
         </SidebarNav>
-        <AccountSection>
+        <AccountSection $open={menuOpen}>
           {status === 'authenticated' && user ? (
             <>
               <AccountEmail title={user.email}>{user.email}</AccountEmail>
@@ -197,11 +221,11 @@ const Sidebar = ({ sections }: SidebarProps) => {
               onClick={() => setLoginOpen(true)}
               disabled={status === 'loading'}
             >
-              {status === 'loading' ? 'Loading…' : 'Sign in to sync'}
+              {status === 'loading' ? 'Loading…' : 'Sign in for calculator sync'}
             </AccountButton>
           )}
         </AccountSection>
-        <DonateSection>
+        <DonateSection $open={menuOpen}>
           <DonateLink
             href="https://www.paypal.me/VIctorVargas997"
             target="_blank"

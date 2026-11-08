@@ -20,11 +20,10 @@ type PageMeta = {
 
 const ROUTE_META: Record<string, PageMeta> = {
   '/': {
-    title: 'Cost of Living Calculator',
-    description:
-      'Free cost of living calculator covering 4,800+ cities. Enter income, city, and family size to see monthly total costs and net budget.',
+    title: 'Your Personalized Relocation Plan',
+    description: 'Plan your next chapter with a household profile, destination budget reports and a relocation planning checklist.',
     ogType: 'website',
-    keywords: 'cost of living calculator, monthly budget, expat budget, relocation calculator',
+    keywords: 'personalized relocation plan, moving abroad, relocation budget, destination report',
   },
   '/calculator': {
     title: 'Cost of Living Calculator',
@@ -97,8 +96,23 @@ export default function SEO() {
   const compareMatch = useMatch('/compare/:pairSlug');
   const cities = useDatasetCities();
 
-  let meta: PageMeta = ROUTE_META[pathname] ?? DEFAULT_META;
-  let canonical = `${BASE_URL}${pathname === '/' ? '' : pathname}`;
+  const privatePage = pathname === '/app' || pathname.startsWith('/app/') || pathname === '/onboarding';
+  // Keep this critical directive independent of Helmet's React-version behavior.
+  useEffect(() => {
+    const existing = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    const tag = existing ?? document.createElement('meta');
+    const previous = tag.getAttribute('content');
+    tag.name = 'robots';
+    tag.content = privatePage ? 'noindex, nofollow' : 'index, follow';
+    if (!existing) document.head.appendChild(tag);
+    return () => {
+      if (!existing) tag.remove();
+      else if (previous === null) tag.removeAttribute('content');
+      else tag.content = previous;
+    };
+  }, [privatePage]);
+  let meta: PageMeta = privatePage ? { title: 'Your Relocation Workspace', description: 'Your private relocation planning workspace.', ogType: 'website' } : ROUTE_META[pathname] ?? DEFAULT_META;
+  const canonical = `${BASE_URL}${pathname === '/' ? '' : pathname}`;
   let jsonLd: Record<string, unknown> | null = null;
 
   if (cityMatch?.params.citySlug) {
@@ -156,7 +170,7 @@ export default function SEO() {
         };
       }
     }
-  } else if (pathname === '/calculator' || pathname === '/') {
+  } else if (pathname === '/calculator') {
     jsonLd = {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
